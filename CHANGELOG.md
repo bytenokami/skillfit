@@ -1,5 +1,30 @@
 # Changelog
 
+## v0.4.0-rc.3 — 2026-05-07
+
+Codex review fixes for the install MVP. Three issues — two blocking + one high. All fixed and live-verified.
+
+### Fixed (blocking)
+- **`blocked-symlink-escape` is now actually returned, not thrown** (`src/install/claude.ts`, `src/install/codex.ts`). Both adapters wrap `ensureWritableRoot` in try/catch and convert `SymlinkEscapeError` into an `InstallResult` with status `blocked-symlink-escape` via the new `blockedSymlinkEscapeResult` helper. CLI surfaces it via `log.warn` + exit 1, no stack trace, JSON mode includes the result in the array.
+- **`mkdir` no longer runs before the symlink check** (`src/install/core.ts`). Refactored `ensureWritableRoot` to walk up to the deepest *existing* ancestor of the requested root, `realpath` it, project the missing tail onto the real ancestor, and validate the projection against the allowed prefix BEFORE any filesystem mutation. Live verified: a workspace whose `.claude/skills/` is a symlink to a victim dir is now rejected with `victim` left empty.
+
+### Fixed (high)
+- **Claude project-scope install no longer rejects workspaces outside `$HOME`** (`src/install/claude.ts`, `src/install/core.ts`). Previously the prefix check used `os.homedir()` for both scopes — this incorrectly rejected projects in `/tmp/`, external volumes, CI workspaces, etc. Now the allowed prefix is computed per scope:
+  - Claude project scope → `realpath(workspace)`
+  - Claude user scope → `realpath(homedir)`
+  - Codex (always user) → `realpath(homedir)`
+  - `--*-root` override → no prefix check (explicit user direction)
+
+### Tests
+- Symlink-escape test rewritten to actually create a real symlink (`fakeWorkspace/.claude/skills` → `victim/`) and assert two things: (a) result.status is `blocked-symlink-escape` (not a thrown error), (b) the victim dir is left empty (pre-mkdir guard).
+- New test `Claude project install accepts workspace outside $HOME` covers the issue-#3 regression with a fixture in `/tmp/`.
+
+### Verified
+- 41/41 tests pass on Node 22+.
+- `node dist/cli.js --version` prints `0.4.0-rc.3`.
+- Live: `--cwd /tmp/...` project install succeeds (was rejected in rc.2).
+- Live: symlink-escape blocked with friendly message, victim dir empty.
+
 ## v0.4.0-rc.2 — 2026-05-07
 
 Principal-engineer review fixes for the install MVP. Five issues — two blocking, three pre-1.0 hardening. All fixed.

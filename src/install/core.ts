@@ -1,6 +1,5 @@
 import { mkdir, readFile, writeFile, rename, unlink, stat, realpath } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { sha256 } from "../util/hash.js";
 import type { CompositeProposal } from "../scan.js";
@@ -91,21 +90,37 @@ export async function readSidecar(sidecarFile: string): Promise<SidecarRecord | 
   }
 }
 
-export async function ensureWritableRoot(root: string, options: { rootOverride: boolean }): Promise<string> {
-  await mkdir(root, { recursive: true });
-  try {
-    await stat(root);
-  } catch (e) {
-    throw new Error(`install root not writable: ${root} (${e instanceof Error ? e.message : String(e)})`);
+export async function ensureWritableRoot(root: string, options: { allowedPrefix: string | null }): Promise<string> {
+  const requested = path.resolve(root);
+  let ancestor = requested;
+  const tail: string[] = [];
+  while (!existsSync(ancestor)) {
+    const parent = path.dirname(ancestor);
+    if (parent === ancestor) break;
+    tail.unshift(path.basename(ancestor));
+    ancestor = parent;
   }
-  const resolved = await realpath(root);
-  if (!options.rootOverride) {
-    const home = await realpath(os.homedir());
-    if (!resolved.startsWith(home + path.sep) && resolved !== home) {
-      throw new SymlinkEscapeError(root, resolved, home);
+  if (!existsSync(ancestor)) {
+    throw new Error(`cannot resolve any ancestor of install root: ${requested}`);
+  }
+  const realAncestor = await realpath(ancestor);
+  const projected = tail.length > 0 ? path.join(realAncestor, ...tail) : realAncestor;
+
+  if (options.allowedPrefix) {
+    const realPrefix = await realpath(options.allowedPrefix);
+    const safe = projected === realPrefix || projected.startsWith(realPrefix + path.sep);
+    if (!safe) {
+      throw new SymlinkEscapeError(requested, projected, realPrefix);
     }
   }
-  return resolved;
+
+  await mkdir(projected, { recursive: true });
+  try {
+    await stat(projected);
+  } catch (e) {
+    throw new Error(`install root not writable after mkdir: ${projected} (${e instanceof Error ? e.message : String(e)})`);
+  }
+  return projected;
 }
 
 export class SymlinkEscapeError extends Error {
@@ -113,6 +128,22 @@ export class SymlinkEscapeError extends Error {
   constructor(public readonly requested: string, public readonly resolved: string, public readonly expectedPrefix: string) {
     super(`install root escapes expected prefix: requested=${requested} resolved=${resolved} expected-under=${expectedPrefix}`);
   }
+}
+
+export function blockedSymlinkEscapeResult(
+  target: "claude" | "codex",
+  err: SymlinkEscapeError,
+  proposedSkillName: string,
+): InstallResult {
+  const skillDir = path.join(err.requested, proposedSkillName);
+  return {
+    target,
+    status: "blocked-symlink-escape",
+    skillDir,
+    skillFile: path.join(skillDir, "SKILL.md"),
+    sidecarFile: path.join(skillDir, SIDECAR_FILENAME),
+    reason: `install root resolves outside its allowed prefix: requested=${err.requested} resolved=${err.resolved} expected-under=${err.expectedPrefix}. Refusing to write — fix the symlink or pass --*-root explicitly.`,
+  };
 }
 
 export async function performInstall(ctx: InstallContext): Promise<InstallResult> {

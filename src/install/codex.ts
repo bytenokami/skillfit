@@ -1,6 +1,6 @@
 import path from "node:path";
 import os from "node:os";
-import { performInstall, ensureWritableRoot, type InstallResult } from "./core.js";
+import { performInstall, ensureWritableRoot, SymlinkEscapeError, blockedSymlinkEscapeResult, type InstallResult } from "./core.js";
 import type { CompositeProposal } from "../scan.js";
 
 export interface InstallCodexOptions {
@@ -18,7 +18,17 @@ export function resolveCodexRoot(opts: { rootOverride?: string | null }): string
 export async function installCodex(opts: InstallCodexOptions): Promise<InstallResult> {
   const installRoot = resolveCodexRoot(opts);
   const rootOverride = opts.rootOverride != null;
-  const resolvedRoot = await ensureWritableRoot(installRoot, { rootOverride });
+  const allowedPrefix = rootOverride ? null : os.homedir();
+
+  let resolvedRoot: string;
+  try {
+    resolvedRoot = await ensureWritableRoot(installRoot, { allowedPrefix });
+  } catch (e) {
+    if (e instanceof SymlinkEscapeError) {
+      return blockedSymlinkEscapeResult("codex", e, opts.proposal.proposedSkillName);
+    }
+    throw e;
+  }
   return performInstall({
     proposal: opts.proposal,
     installRoot: resolvedRoot,

@@ -226,28 +226,62 @@ test("YAML frontmatter is robust to nasty repo names (issue #3)", async () => {
   }
 });
 
-test("symlink-escape on installRoot is rejected (issue #5)", async () => {
+test("symlink-escape on installRoot returns blocked-symlink-escape result (issue #5)", async () => {
   const fs = await import("node:fs");
+  const fsp = await import("node:fs/promises");
   const victim = mkdtempSync(path.join(tmpdir(), "skillfit-victim-"));
-  const safe = mkdtempSync(path.join(tmpdir(), "skillfit-symcheck-"));
+  const fakeWorkspace = mkdtempSync(path.join(tmpdir(), "skillfit-workspace-"));
   try {
-    const proposal = await runScan(SAMPLE);
+    fs.mkdirSync(path.join(fakeWorkspace, ".claude"));
+    fs.symlinkSync(victim, path.join(fakeWorkspace, ".claude", "skills"));
+    fs.writeFileSync(path.join(fakeWorkspace, "package.json"), JSON.stringify({
+      name: "fake", version: "1.0.0", dependencies: { react: "^18" },
+    }));
 
-    const safeResult = await installClaude({ proposal, workspace: SAMPLE, scope: "project", force: false, installerVersion: "0.4.0-test", rootOverride: safe });
-    assert.equal(safeResult.status, "installed");
+    const proposal = await runScan(fakeWorkspace);
+    const result = await installClaude({
+      proposal,
+      workspace: fakeWorkspace,
+      scope: "project",
+      force: false,
+      installerVersion: "0.4.0-test",
+      rootOverride: null,
+    });
 
-    const homedirMod = await import("node:os");
-    const home = await (await import("node:fs/promises")).realpath(homedirMod.homedir());
-    if (!safe.startsWith(home)) {
-      const { ensureWritableRoot } = await import("../src/install/core.js");
-      await assert.rejects(
-        ensureWritableRoot(safe, { rootOverride: false }),
-        /escapes expected prefix/,
-      );
-    }
+    assert.equal(result.status, "blocked-symlink-escape", `expected blocked-symlink-escape; got ${result.status} (${result.reason ?? ""})`);
+
+    const victimEntries = fs.readdirSync(victim);
+    assert.equal(victimEntries.length, 0, `victim dir must remain empty (mkdir-before-check would create files); got ${victimEntries.join(",")}`);
   } finally {
     rmSync(victim, { recursive: true, force: true });
-    rmSync(safe, { recursive: true, force: true });
+    rmSync(fakeWorkspace, { recursive: true, force: true });
+  }
+});
+
+test("Claude project install accepts workspace outside $HOME (issue #3)", async () => {
+  const fs = await import("node:fs");
+  const fsp = await import("node:fs/promises");
+  const repoOutsideHome = mkdtempSync(path.join(tmpdir(), "skillfit-outside-home-"));
+  try {
+    fs.writeFileSync(path.join(repoOutsideHome, "package.json"), JSON.stringify({
+      name: "outside", version: "1.0.0", dependencies: { react: "^18" },
+    }));
+
+    const proposal = await runScan(repoOutsideHome);
+    const result = await installClaude({
+      proposal,
+      workspace: repoOutsideHome,
+      scope: "project",
+      force: false,
+      installerVersion: "0.4.0-test",
+      rootOverride: null,
+    });
+    assert.equal(result.status, "installed", `project install outside $HOME must succeed; got ${result.status} (${result.reason ?? ""})`);
+    const realRepo = await fsp.realpath(repoOutsideHome);
+    const realSkill = await fsp.realpath(result.skillFile);
+    assert.ok(realSkill.startsWith(realRepo), `skillFile must land under workspace, got ${realSkill} not under ${realRepo}`);
+  } finally {
+    rmSync(repoOutsideHome, { recursive: true, force: true });
   }
 });
 

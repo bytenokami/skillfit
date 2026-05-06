@@ -1,6 +1,6 @@
 import path from "node:path";
 import os from "node:os";
-import { performInstall, ensureWritableRoot, type InstallResult } from "./core.js";
+import { performInstall, ensureWritableRoot, SymlinkEscapeError, blockedSymlinkEscapeResult, type InstallResult } from "./core.js";
 import type { CompositeProposal } from "../scan.js";
 
 export type ClaudeScope = "project" | "user";
@@ -23,7 +23,21 @@ export function resolveClaudeRoot(opts: { workspace: string; scope: ClaudeScope;
 export async function installClaude(opts: InstallClaudeOptions): Promise<InstallResult> {
   const installRoot = resolveClaudeRoot(opts);
   const rootOverride = opts.rootOverride != null;
-  const resolvedRoot = await ensureWritableRoot(installRoot, { rootOverride });
+  const allowedPrefix = rootOverride
+    ? null
+    : opts.scope === "user"
+      ? os.homedir()
+      : path.resolve(opts.workspace);
+
+  let resolvedRoot: string;
+  try {
+    resolvedRoot = await ensureWritableRoot(installRoot, { allowedPrefix });
+  } catch (e) {
+    if (e instanceof SymlinkEscapeError) {
+      return blockedSymlinkEscapeResult("claude", e, opts.proposal.proposedSkillName);
+    }
+    throw e;
+  }
   return performInstall({
     proposal: opts.proposal,
     installRoot: resolvedRoot,
