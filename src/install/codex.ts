@@ -1,6 +1,5 @@
-import path from "node:path";
-import os from "node:os";
-import { performInstall, ensureWritableRoot, SymlinkEscapeError, blockedSymlinkEscapeResult, type InstallResult } from "./core.js";
+import { TARGETS, installToTarget } from "./targets.js";
+import type { InstallResult } from "./core.js";
 import type { CompositeProposal } from "../scan.js";
 
 export interface InstallCodexOptions {
@@ -11,30 +10,21 @@ export interface InstallCodexOptions {
 }
 
 export function resolveCodexRoot(opts: { rootOverride?: string | null }): string {
-  if (opts.rootOverride) return path.resolve(opts.rootOverride);
-  return path.join(os.homedir(), ".agents", "skills");
+  return TARGETS.codex.resolveRoot({
+    workspace: "",
+    scope: "user",
+    rootOverride: opts.rootOverride ?? null,
+  });
 }
 
-export async function installCodex(opts: InstallCodexOptions): Promise<InstallResult> {
-  const installRoot = resolveCodexRoot(opts);
-  const rootOverride = opts.rootOverride != null;
-  const allowedPrefix = rootOverride ? null : os.homedir();
-
-  let resolvedRoot: string;
-  try {
-    resolvedRoot = await ensureWritableRoot(installRoot, { allowedPrefix });
-  } catch (e) {
-    if (e instanceof SymlinkEscapeError) {
-      return blockedSymlinkEscapeResult("codex", e, opts.proposal.proposedSkillName);
-    }
-    throw e;
-  }
-  return performInstall({
+export function installCodex(opts: InstallCodexOptions): Promise<InstallResult> {
+  return installToTarget({
+    targetId: "codex",
     proposal: opts.proposal,
-    installRoot: resolvedRoot,
-    target: "codex",
+    workspace: "",
+    scope: "user",
     force: opts.force,
     installerVersion: opts.installerVersion,
-    rootOverride,
+    rootOverride: opts.rootOverride ?? null,
   });
 }

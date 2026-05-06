@@ -1,11 +1,11 @@
 import path from "node:path";
 import { runScan } from "../scan.js";
-import { installClaude, type ClaudeScope } from "../install/claude.js";
-import { installCodex } from "../install/codex.js";
+import { installToTarget, TARGETS, type TargetId } from "../install/targets.js";
 import type { InstallResult } from "../install/core.js";
+import type { ClaudeScope } from "../install/claude.js";
 import { log } from "../util/log.js";
 
-export type InstallTarget = "claude" | "codex" | "both";
+export type InstallTarget = TargetId | "both";
 
 export interface InstallOptions {
   cwd: string;
@@ -29,32 +29,25 @@ export async function runInstall(opts: InstallOptions): Promise<InstallSummary> 
 
   log.info(`installing composite '${proposal.proposedSkillName}' (target=${opts.target}, scope=${opts.scope}${opts.force ? ", force" : ""})`);
 
+  const targets: TargetId[] = opts.target === "both" ? ["claude", "codex"] : [opts.target];
   const results: InstallResult[] = [];
 
-  if (opts.target === "claude" || opts.target === "both") {
-    const r = await installClaude({
+  for (const id of targets) {
+    const rootOverride = id === "claude" ? opts.claudeRoot : opts.codexRoot;
+    const r = await installToTarget({
+      targetId: id,
       proposal,
       workspace: repoRoot,
       scope: opts.scope,
       force: opts.force,
       installerVersion: opts.installerVersion,
-      rootOverride: opts.claudeRoot ?? null,
+      rootOverride: rootOverride ?? null,
     });
     results.push(r);
     logResult(r);
-  }
-
-  if (opts.target === "codex" || opts.target === "both") {
-    const r = await installCodex({
-      proposal,
-      force: opts.force,
-      installerVersion: opts.installerVersion,
-      rootOverride: opts.codexRoot ?? null,
-    });
-    results.push(r);
-    logResult(r);
-    if (r.status === "installed" || r.status === "updated") {
-      log.info("codex: restart the Codex CLI to discover the skill");
+    const note = TARGETS[id].postInstallNote;
+    if (note && (r.status === "installed" || r.status === "updated")) {
+      log.info(`${id}: ${note}`);
     }
   }
 

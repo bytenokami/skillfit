@@ -1,5 +1,30 @@
 # Changelog
 
+## v0.4.0 — 2026-05-07
+
+Curator + opt-in installer, locked product surface. Promoted from rc.3.
+
+### Architecture refactor
+- New `src/install/targets.ts` — data-driven `InstallTargetSpec` registry with `id`, `supportsProjectScope`, `resolveRoot`, `resolveAllowedPrefix`, `postInstallNote`. Single `installToTarget(opts)` entrypoint replaces the duplicated pipeline in claude.ts/codex.ts.
+- `src/install/claude.ts` and `src/install/codex.ts` slimmed to thin delegating shims (preserved as public API for tests + downstream consumers).
+- `src/commands/install.ts` iterates over selected targets via `TARGETS[id]`. Adding a new target (Cursor, Aider, etc.) now means one entry in the registry, not a new file + new branch + new dispatch arm.
+- New test asserts the registry treats both targets identically except for paths and post-install notes.
+
+### Promoted to stable
+- Curator (default `skillfit`): dry-run scan with full stack/topology/recommendation output. Locked.
+- Installer (`skillfit install --target claude|codex|both`): one self-contained skill dir per repo. Locked.
+- All status taxonomy (`installed | updated | unchanged | blocked-conflict | blocked-foreign | blocked-drift | blocked-symlink-escape`) locked.
+- Sidecar schema v1 locked. Future schema changes will bump `SIDECAR_VERSION` in `src/install/core.ts`.
+
+### Verified
+- 42/42 tests pass.
+- Full review trail closed: codex format compliance, Claude format compliance, principal-engineer install review (5 issues fixed), codex install review (3 issues fixed).
+- Architecture concern (per-target adapter duplication) addressed in this release.
+
+### Position
+- Codex Python prototype (`local-skill-curator`) obsolete since v0.3.0-rc.1. skillfit canonical.
+- npm publish still gated on autoskills upstream contract; v0.4.0 is internal/preview.
+
 ## v0.4.0-rc.3 — 2026-05-07
 
 Codex review fixes for the install MVP. Three issues — two blocking + one high. All fixed and live-verified.

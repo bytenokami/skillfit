@@ -1,9 +1,8 @@
-import path from "node:path";
-import os from "node:os";
-import { performInstall, ensureWritableRoot, SymlinkEscapeError, blockedSymlinkEscapeResult, type InstallResult } from "./core.js";
+import { TARGETS, installToTarget, type Scope } from "./targets.js";
+import type { InstallResult } from "./core.js";
 import type { CompositeProposal } from "../scan.js";
 
-export type ClaudeScope = "project" | "user";
+export type ClaudeScope = Scope;
 
 export interface InstallClaudeOptions {
   proposal: CompositeProposal;
@@ -15,35 +14,13 @@ export interface InstallClaudeOptions {
 }
 
 export function resolveClaudeRoot(opts: { workspace: string; scope: ClaudeScope; rootOverride?: string | null }): string {
-  if (opts.rootOverride) return path.resolve(opts.rootOverride);
-  if (opts.scope === "user") return path.join(os.homedir(), ".claude", "skills");
-  return path.join(opts.workspace, ".claude", "skills");
+  return TARGETS.claude.resolveRoot({
+    workspace: opts.workspace,
+    scope: opts.scope,
+    rootOverride: opts.rootOverride ?? null,
+  });
 }
 
-export async function installClaude(opts: InstallClaudeOptions): Promise<InstallResult> {
-  const installRoot = resolveClaudeRoot(opts);
-  const rootOverride = opts.rootOverride != null;
-  const allowedPrefix = rootOverride
-    ? null
-    : opts.scope === "user"
-      ? os.homedir()
-      : path.resolve(opts.workspace);
-
-  let resolvedRoot: string;
-  try {
-    resolvedRoot = await ensureWritableRoot(installRoot, { allowedPrefix });
-  } catch (e) {
-    if (e instanceof SymlinkEscapeError) {
-      return blockedSymlinkEscapeResult("claude", e, opts.proposal.proposedSkillName);
-    }
-    throw e;
-  }
-  return performInstall({
-    proposal: opts.proposal,
-    installRoot: resolvedRoot,
-    target: "claude",
-    force: opts.force,
-    installerVersion: opts.installerVersion,
-    rootOverride,
-  });
+export function installClaude(opts: InstallClaudeOptions): Promise<InstallResult> {
+  return installToTarget({ targetId: "claude", ...opts });
 }

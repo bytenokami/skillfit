@@ -298,3 +298,29 @@ test("sidecar contains bodyHash distinct from proposalHash", async () => {
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("registry installToTarget treats both targets identically (only paths/notes differ)", async () => {
+  const { TARGETS, installToTarget } = await import("../src/install/targets.js");
+  const root = mkdtempSync(path.join(tmpdir(), "skillfit-registry-"));
+  try {
+    const proposal = await runScan(SAMPLE);
+
+    const claudeResult = await installToTarget({
+      targetId: "claude", proposal, workspace: SAMPLE, scope: "project", force: false,
+      installerVersion: "0.4.0-test", rootOverride: path.join(root, "claude-out"),
+    });
+    const codexResult = await installToTarget({
+      targetId: "codex", proposal, workspace: SAMPLE, scope: "user", force: false,
+      installerVersion: "0.4.0-test", rootOverride: path.join(root, "codex-out"),
+    });
+
+    assert.equal(claudeResult.status, "installed");
+    assert.equal(codexResult.status, "installed");
+    assert.equal(TARGETS.claude.supportsProjectScope, true);
+    assert.equal(TARGETS.codex.supportsProjectScope, false);
+    assert.ok(TARGETS.codex.postInstallNote);
+    assert.equal(TARGETS.claude.postInstallNote, undefined);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
