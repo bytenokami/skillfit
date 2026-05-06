@@ -223,7 +223,11 @@ function extractRuleSummary(synthBody: string): string {
 function capString(s: string, maxTokens: number): string {
   const maxChars = maxTokens * APPROX_CHARS_PER_TOKEN;
   if (s.length <= maxChars) return s;
-  return s.slice(0, maxChars - 80) + "\n\n…[truncated to ~" + maxTokens + " token cap]";
+  const cutAt = maxChars - 80;
+  const slice = s.slice(0, cutAt);
+  const lastBoundary = Math.max(slice.lastIndexOf("\n"), slice.lastIndexOf(". "));
+  const safe = lastBoundary > cutAt - 400 ? slice.slice(0, lastBoundary) : slice;
+  return safe.trimEnd() + "\n\n…[truncated to ~" + maxTokens + " token cap]";
 }
 
 function capTokens(s: string): number {

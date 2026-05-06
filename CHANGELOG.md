@@ -1,5 +1,49 @@
 # Changelog
 
+## v0.4.0-rc.1 — 2026-05-07
+
+Adds the opt-in installer. Curator surface unchanged; new `install` command writes one self-contained directory per repo for either Claude Code or Codex CLI. Verified by parallel format-compliance reviewers (claude-code-guide + general-purpose).
+
+### Added
+- **`skillfit install --target claude|codex|both`** new command. Runs the same scan pipeline, then writes the resulting composite proposal as a single SKILL.md directory.
+- **Claude target (`src/install/claude.ts`)** — writes to `<cwd>/.claude/skills/<name>/SKILL.md` (project scope) or `~/.claude/skills/<name>/SKILL.md` (`--scope user`). Live-watched by Claude Code; no restart needed.
+- **Codex target (`src/install/codex.ts`)** — writes to `~/.agents/skills/<name>/SKILL.md` per Codex CLI's user-scope discovery convention. Codex has no project-scope skill discovery; user must restart Codex CLI to pick up.
+- **Sidecar lockfile** `<dir>/.skillfit.lock.json` records `proposalHash`, `installedBy`, `installedAt`, `skillName`, `workspace`. Loaders ignore non-`SKILL.md` files in skill dirs (verified live for both Claude and Codex).
+- **Idempotency** — re-running install with no proposal change is a no-op (status: `unchanged`).
+- **Conflict detection** — install blocks on existing foreign files (no sidecar) or hash mismatch (sidecar present but proposalHash differs). `--force` overrides.
+- **Common shape both targets** — frontmatter with `name`, `description`, `metadata.{source,workspace,scanned-at,stacks,candidates}`. Body is the curator's composite body draft (≤1500 tok).
+
+### Changed
+- `capString` in `src/scan.ts` now truncates at the nearest newline or sentence boundary instead of mid-character. Verified live: server-uk's body now ends at a complete bullet line + blank line + truncation marker.
+- Dropped `type: project` from emitted frontmatter — it's not a documented Claude or Codex frontmatter key, was ignored by both loaders, but added noise. Removed for canonical compliance.
+
+### Tests added (11)
+- `install claude writes SKILL.md + sidecar in target dir`
+- `install codex writes SKILL.md + sidecar (same shape, different default root)`
+- `re-running install with same proposal is unchanged (idempotent)`
+- `install blocks on foreign file without --force`
+- `install blocks on hash conflict when proposal changes (without --force)`
+- `proposalHash is deterministic + sensitive to candidate changes`
+- `buildSkillBody YAML frontmatter is well-formed (parseable name + description)`
+- `sidecar contains version, hash, name, workspace`
+- `default Claude root resolves to .claude/skills/ in workspace (project scope)`
+- `default Codex root resolves to ~/.agents/skills/`
+- `sidecar filename is .skillfit.lock.json`
+
+### Verified
+- 35/35 tests pass on Node 22+.
+- MVP install on `livly-server-uk` to tmp dirs for both targets succeeded.
+- Idempotent re-run, foreign-file block, force-override, proposal-change block all live-verified.
+- Parallel reviewer agents (Claude format spec, Codex format spec): both PASS.
+- Claude reviewer flagged: frontmatter and body well-formed; sidecar ignored; ~1500 tok at session-load (right at body cap, intentional).
+- Codex reviewer flagged: layout matches `~/.agents/skills/<name>/SKILL.md`; required keys present; sidecar ignored; cross-skill references treated as plain text (acceptable — composite is a router, deep skills loaded on demand).
+
+### Decisions made unilaterally as EM
+- Two thin adapters, not a shared "generated artifact" abstraction. Frontmatter+body happen to be format-compatible across Claude and Codex today, but path layout, scope semantics, and discovery model diverge. Two adapters preserve flexibility when the formats inevitably drift.
+- Codex installs only to user scope (`~/.agents/skills/`). No project-scope Codex install until OpenAI documents one.
+- Sidecar lives inside the skill dir (`<dir>/.skillfit.lock.json`) instead of central registry. Self-contained dirs survive moves; central registry creates state-sync hazards.
+- `skillfit install` is gated on `--target`; the curator default (no command) stays dry-run.
+
 ## v0.3.0-rc.3 — 2026-05-07
 
 Principal-engineer review fixes — five issues, three blocking.

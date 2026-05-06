@@ -1,12 +1,20 @@
 # skillfit
 
-> Composite-skill curator for AI agents. **Dry-run only.** Scans a workspace, prints a proposed per-repo composite-skill definition, never installs.
+> Composite-skill curator for AI agents. Scans a workspace, prints one per-repo composite proposal. Optional installer for Claude Code and Codex CLI; opt-in only, never edits agent config.
 
 ```bash
+# Curator (default, dry-run)
 npx skillfit                              # scan current dir, print to stdout
 npx skillfit --cwd /path/to/repo
 npx skillfit --format json
 npx skillfit --output report.md           # write single report file
+
+# Installer (opt-in)
+npx skillfit install --target claude              # → <cwd>/.claude/skills/<name>/SKILL.md
+npx skillfit install --target claude --scope user # → ~/.claude/skills/<name>/SKILL.md
+npx skillfit install --target codex               # → ~/.agents/skills/<name>/SKILL.md
+npx skillfit install --target both                # both at once
+npx skillfit install --target claude --force      # overwrite on conflict / foreign file
 ```
 
 ## What it does
@@ -23,14 +31,28 @@ For one workspace:
 5. Emits recommendations: `skip` / `blocked` / `adapt` actions with rollback notes. Includes a `boundary/generator-jp` blocked rec when the workspace contains `generator-jp/`.
 6. Prints to stdout (markdown by default) or `--output <file>`.
 
-## What it never does
+## What `scan` (default) never does
 
 - Never installs skills.
 - Never writes per-dependency skill files.
 - Never edits `CLAUDE.md`, `AGENTS.md`, `.cursor/rules`, hooks, or any agent config.
-- Never creates a lockfile.
 
-The user decides what to do with the report.
+## What `install` does (opt-in only)
+
+- Writes exactly one directory per repo: `<root>/<skill-name>/SKILL.md` + `.skillfit.lock.json` sidecar.
+- Default Claude root: `<cwd>/.claude/skills/` (project scope) or `~/.claude/skills/` (`--scope user`).
+- Default Codex root: `~/.agents/skills/` (Codex CLI's user-scope discovery dir; restart Codex after install to pick up).
+- Idempotent: re-running with no proposal change is a no-op.
+- Conflict-aware: blocks on foreign files (no `.skillfit.lock.json`) or hash mismatch unless `--force`.
+- Never edits agent config, hooks, or top-level instruction files.
+
+## Install boundaries
+
+| Target | Path | Scope | Discovery |
+|--------|------|-------|-----------|
+| Claude (project) | `<cwd>/.claude/skills/<name>/SKILL.md` | this repo only | live-watched by Claude Code |
+| Claude (user) | `~/.claude/skills/<name>/SKILL.md` | all projects | live-watched by Claude Code |
+| Codex | `~/.agents/skills/<name>/SKILL.md` | user (Codex has no project-scope) | requires Codex CLI restart |
 
 ## Install (dev)
 

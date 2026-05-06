@@ -5,6 +5,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { runScan } from "./scan.js";
 import { renderMarkdown, renderJson } from "./report.js";
+import { runInstall, type InstallTarget } from "./commands/install.js";
+import type { ClaudeScope } from "./install/claude.js";
 import { log } from "./util/log.js";
 
 const VERSION = readVersion();
@@ -26,22 +28,34 @@ function readVersion(): string {
   return "0.0.0-unknown";
 }
 
-const HELP = `skillfit ${VERSION} — composite-proposal curator (dry-run, never installs)
+const HELP = `skillfit ${VERSION} — composite-skill curator + opt-in installer
 
-Usage:
-  skillfit [scan] [--cwd <path>] [--format md|json] [--output <file>]
+Commands:
+  skillfit [scan]                    Scan workspace, emit composite proposal (dry-run, default).
+  skillfit install --target T        Install the proposed composite to T (claude|codex|both).
 
-Behavior:
-  - Scans the workspace for stack signals + rule files.
-  - Emits one composite-skill proposal per scan to stdout (or --output file).
-  - Never writes skill files. Never edits CLAUDE.md, AGENTS.md, hooks, or config.
-
-Options:
+Scan options:
   --cwd <path>       Workspace to scan (default: current dir).
   --format md|json   Output format (default: md).
   --output <path>    Write report to file instead of stdout.
+
+Install options (only valid with the install command):
+  --target T         Required. claude | codex | both.
+  --scope S          Claude scope: project | user (default: project). Codex always installs to user-scope ~/.agents/skills/.
+  --force            Overwrite existing skill if hash differs or no sidecar present.
+  --claude-root P    Override Claude install root (default: <cwd>/.claude/skills/ for project scope).
+  --codex-root P     Override Codex install root (default: ~/.agents/skills/).
+
+Global options:
   --version          Print version and exit.
   --help, -h         Show this help.
+
+Behavior:
+  - 'scan' (default) writes nothing; emits a single composite proposal to stdout/--output.
+  - 'install' is opt-in. It writes ONE directory per repo (<root>/<skill-name>/SKILL.md + .skillfit.lock.json).
+  - Never edits CLAUDE.md, AGENTS.md, hooks, or any agent config file.
+  - Idempotent: re-running install with no proposal change is a no-op (status: unchanged).
+  - Conflict-aware: blocks on existing foreign files unless --force.
 
 Environment:
   SKILLFIT_LOG=silent|error|warn|info|debug   Log level (default: info; logs go to stderr).
@@ -54,6 +68,11 @@ interface Args {
   output: string | null;
   help: boolean;
   version: boolean;
+  target: InstallTarget | null;
+  scope: ClaudeScope;
+  force: boolean;
+  claudeRoot: string | null;
+  codexRoot: string | null;
 }
 
 function parseArgs(argv: string[]): Args {
@@ -65,6 +84,11 @@ function parseArgs(argv: string[]): Args {
     output: null,
     help: false,
     version: false,
+    target: null,
+    scope: "project",
+    force: false,
+    claudeRoot: null,
+    codexRoot: null,
   };
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
@@ -76,7 +100,18 @@ function parseArgs(argv: string[]): Args {
       if (f !== "md" && f !== "json") throw new Error(`--format must be md or json, got: ${f}`);
       out.format = f;
     } else if (a === "--output") out.output = args[++i] ?? null;
-    else if (a === "scan") out.cmd = "scan";
+    else if (a === "--target") {
+      const t = args[++i];
+      if (t !== "claude" && t !== "codex" && t !== "both") throw new Error(`--target must be claude|codex|both, got: ${t}`);
+      out.target = t;
+    } else if (a === "--scope") {
+      const s = args[++i];
+      if (s !== "project" && s !== "user") throw new Error(`--scope must be project|user, got: ${s}`);
+      out.scope = s;
+    } else if (a === "--force") out.force = true;
+    else if (a === "--claude-root") out.claudeRoot = args[++i] ?? null;
+    else if (a === "--codex-root") out.codexRoot = args[++i] ?? null;
+    else if (a === "scan" || a === "install") out.cmd = a;
     else if (a && !a.startsWith("-")) out.cmd = a;
   }
   return out;
@@ -98,6 +133,26 @@ async function main(): Promise<number> {
   if (parsed.version) {
     process.stdout.write(VERSION + "\n");
     return 0;
+  }
+
+  if (parsed.cmd === "install") {
+    if (!parsed.target) {
+      log.error("install requires --target claude|codex|both");
+      return 2;
+    }
+    const summary = await runInstall({
+      cwd: parsed.cwd,
+      target: parsed.target,
+      scope: parsed.scope,
+      force: parsed.force,
+      claudeRoot: parsed.claudeRoot,
+      codexRoot: parsed.codexRoot,
+      installerVersion: VERSION,
+    });
+    if (parsed.format === "json") {
+      process.stdout.write(JSON.stringify({ version: 1, ...summary }, null, 2) + "\n");
+    }
+    return summary.hadBlock ? 1 : 0;
   }
 
   if (parsed.cmd !== "scan") {
