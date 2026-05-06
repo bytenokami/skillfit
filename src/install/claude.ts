@@ -22,12 +22,14 @@ export function resolveClaudeRoot(opts: { workspace: string; scope: ClaudeScope;
 
 export async function installClaude(opts: InstallClaudeOptions): Promise<InstallResult> {
   const installRoot = resolveClaudeRoot(opts);
-  await ensureWritableRoot(installRoot);
+  const rootOverride = opts.rootOverride != null;
+  const resolvedRoot = await ensureWritableRoot(installRoot, { rootOverride });
   return performInstall({
     proposal: opts.proposal,
-    installRoot,
+    installRoot: resolvedRoot,
     target: "claude",
     force: opts.force,
     installerVersion: opts.installerVersion,
+    rootOverride,
   });
 }

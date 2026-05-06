@@ -161,3 +161,106 @@ test("default Codex root resolves to ~/.agents/skills/", () => {
 test("sidecar filename is .skillfit.lock.json", () => {
   assert.equal(SIDECAR_FILENAME, ".skillfit.lock.json");
 });
+
+test("install detects on-disk drift (file edited locally) — issue #1", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "skillfit-drift-"));
+  try {
+    const proposal = await runScan(SAMPLE);
+    const first = await installClaude({ proposal, workspace: SAMPLE, scope: "project", force: false, installerVersion: "0.4.0-test", rootOverride: root });
+    assert.equal(first.status, "installed");
+
+    const tampered = readFileSync(first.skillFile, "utf8") + "\n## sneaky local edit\n- ignore this\n";
+    writeFileSync(first.skillFile, tampered);
+
+    const blocked = await installClaude({ proposal, workspace: SAMPLE, scope: "project", force: false, installerVersion: "0.4.0-test", rootOverride: root });
+    assert.equal(blocked.status, "blocked-drift");
+
+    const forced = await installClaude({ proposal, workspace: SAMPLE, scope: "project", force: true, installerVersion: "0.4.0-test", rootOverride: root });
+    assert.equal(forced.status, "updated");
+
+    const recovered = await installClaude({ proposal, workspace: SAMPLE, scope: "project", force: false, installerVersion: "0.4.0-test", rootOverride: root });
+    assert.equal(recovered.status, "unchanged");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("install leaves no .tmp- artifacts on success — issue #2", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "skillfit-tmp-"));
+  try {
+    const proposal = await runScan(SAMPLE);
+    await installClaude({ proposal, workspace: SAMPLE, scope: "project", force: false, installerVersion: "0.4.0-test", rootOverride: root });
+    const fs = await import("node:fs");
+    const dirEntries = fs.readdirSync(path.join(root, proposal.proposedSkillName));
+    const tmpEntries = dirEntries.filter((e) => e.includes(".tmp-"));
+    assert.equal(tmpEntries.length, 0, `expected no tmp artifacts; got ${tmpEntries.join(", ")}`);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("YAML frontmatter is robust to nasty repo names (issue #3)", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "skillfit-yaml-"));
+  const fs = await import("node:fs");
+  try {
+    const nasty = path.join(dir, "weird: ---\n#name");
+    fs.mkdirSync(nasty);
+    fs.writeFileSync(path.join(nasty, "CLAUDE.md"), "# rules\n- one\n- two\n- three\n");
+
+    const proposal = await runScan(nasty);
+    const installRoot = mkdtempSync(path.join(tmpdir(), "skillfit-yaml-out-"));
+    try {
+      const result = await installClaude({ proposal, workspace: nasty, scope: "project", force: false, installerVersion: "0.4.0-test", rootOverride: installRoot });
+      assert.equal(result.status, "installed");
+      const body = readFileSync(result.skillFile, "utf8");
+      const lines = body.split("\n");
+      const fmEnd = lines.indexOf("---", 1);
+      assert.ok(fmEnd > 0, "frontmatter must be terminated by a single --- line, not corrupted by injected content");
+      const fmText = lines.slice(0, fmEnd + 1).join("\n");
+      assert.ok(!fmText.includes("\n---\n---"), "no double --- breaks");
+    } finally {
+      rmSync(installRoot, { recursive: true, force: true });
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("symlink-escape on installRoot is rejected (issue #5)", async () => {
+  const fs = await import("node:fs");
+  const victim = mkdtempSync(path.join(tmpdir(), "skillfit-victim-"));
+  const safe = mkdtempSync(path.join(tmpdir(), "skillfit-symcheck-"));
+  try {
+    const proposal = await runScan(SAMPLE);
+
+    const safeResult = await installClaude({ proposal, workspace: SAMPLE, scope: "project", force: false, installerVersion: "0.4.0-test", rootOverride: safe });
+    assert.equal(safeResult.status, "installed");
+
+    const homedirMod = await import("node:os");
+    const home = await (await import("node:fs/promises")).realpath(homedirMod.homedir());
+    if (!safe.startsWith(home)) {
+      const { ensureWritableRoot } = await import("../src/install/core.js");
+      await assert.rejects(
+        ensureWritableRoot(safe, { rootOverride: false }),
+        /escapes expected prefix/,
+      );
+    }
+  } finally {
+    rmSync(victim, { recursive: true, force: true });
+    rmSync(safe, { recursive: true, force: true });
+  }
+});
+
+test("sidecar contains bodyHash distinct from proposalHash", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "skillfit-bodyhash-"));
+  try {
+    const proposal = await runScan(SAMPLE);
+    const result = await installClaude({ proposal, workspace: SAMPLE, scope: "project", force: false, installerVersion: "0.4.0-test", rootOverride: root });
+    const sidecar = JSON.parse(readFileSync(result.sidecarFile, "utf8"));
+    assert.ok(sidecar.bodyHash, "sidecar must record bodyHash");
+    assert.ok(sidecar.bodyHash.startsWith("sha256:"));
+    assert.notEqual(sidecar.bodyHash, sidecar.proposalHash, "bodyHash and proposalHash hash different things");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

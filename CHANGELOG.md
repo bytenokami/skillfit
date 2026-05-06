@@ -1,5 +1,36 @@
 # Changelog
 
+## v0.4.0-rc.2 — 2026-05-07
+
+Principal-engineer review fixes for the install MVP. Five issues — two blocking, three pre-1.0 hardening. All fixed.
+
+### Fixed (blocking)
+- **#1 On-disk drift detection** (`src/install/core.ts`). Sidecar now records `bodyHash`; on re-install, the on-disk SKILL.md is re-read and hashed. Mismatch → new `blocked-drift` status, requires `--force`. Closes the silent-stale-skill case where a user (or attacker) hand-edits SKILL.md and skillfit reports `unchanged`.
+- **#3 YAML scalar escaping** (`src/install/core.ts`). `description`, `workspace`, `scanned-at`, and any non-trivial `name` now go through unconditional `JSON.stringify` (i.e. double-quoted YAML scalars). Previous regex narrow-quoted only `[:#\n]`, so a repo named `--- weird` or `| pipe` would corrupt frontmatter. New test exercises a fixture with `:` and `---` in the directory name.
+
+### Fixed (hardening)
+- **#2 Atomic two-write install** (`src/install/core.ts`). Both files written to `<name>.tmp-<pid>` first, sidecar renamed into place before SKILL.md, with cleanup of any tmp file on error. Crash mid-install no longer leaves an orphan SKILL.md without sidecar (loaders won't see a half-installed skill).
+- **#4 Installer version fail-fast** (`src/cli.ts`). Removed the `"0.0.0-unknown"` fallback. `readVersion` now throws if `package.json` cannot be located. Sidecars are guaranteed to record a real installer identity per `installedBy`.
+- **#5 Symlink-escape rejection on install root** (`src/install/core.ts`). After `mkdir`, the install root's `realpath` is computed. If no `--*-root` override was passed and the resolved path escapes `os.homedir()`, install throws `SymlinkEscapeError`. Override-mode skips the check by design (user intentionally pointed at an arbitrary path, e.g. `/tmp/...` for tests).
+
+### Added
+- New `InstallStatus` values: `blocked-drift`, `blocked-symlink-escape`. CLI surfaces both with `log.warn` and exit code 1.
+- 5 new tests (`test/install.test.ts`):
+  - `install detects on-disk drift (file edited locally) — issue #1`
+  - `install leaves no .tmp- artifacts on success — issue #2`
+  - `YAML frontmatter is robust to nasty repo names (issue #3)`
+  - `symlink-escape on installRoot is rejected (issue #5)`
+  - `sidecar contains bodyHash distinct from proposalHash`
+
+### Verified
+- 40/40 tests pass on Node 22+.
+- Live: tampering with `/tmp/.../SKILL.md` after install correctly blocks with `! claude: blocked (on-disk drift). ...`, exit 1. `--force` overrides cleanly.
+- Sidecar now contains both `proposalHash` (input drift signal) and `bodyHash` (file drift signal).
+- `node dist/cli.js --version` prints `0.4.0-rc.2`.
+
+### Architecture concern (still deferred)
+Per-target adapters (claude.ts, codex.ts) are 30-line shims duplicating the install pipeline. As targets grow (cursor, aider, etc.) refactor to a data-driven `InstallTarget` registry. Tracked for future RC; not blocking 0.4.
+
 ## v0.4.0-rc.1 — 2026-05-07
 
 Adds the opt-in installer. Curator surface unchanged; new `install` command writes one self-contained directory per repo for either Claude Code or Codex CLI. Verified by parallel format-compliance reviewers (claude-code-guide + general-purpose).

@@ -17,12 +17,14 @@ export function resolveCodexRoot(opts: { rootOverride?: string | null }): string
 
 export async function installCodex(opts: InstallCodexOptions): Promise<InstallResult> {
   const installRoot = resolveCodexRoot(opts);
-  await ensureWritableRoot(installRoot);
+  const rootOverride = opts.rootOverride != null;
+  const resolvedRoot = await ensureWritableRoot(installRoot, { rootOverride });
   return performInstall({
     proposal: opts.proposal,
-    installRoot,
+    installRoot: resolvedRoot,
     target: "codex",
     force: opts.force,
     installerVersion: opts.installerVersion,
+    rootOverride,
   });
 }

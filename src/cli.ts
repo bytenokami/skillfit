@@ -25,7 +25,7 @@ function readVersion(): string {
       continue;
     }
   }
-  return "0.0.0-unknown";
+  throw new Error(`skillfit: cannot resolve installer version (no package.json at ${candidates.join(" or ")}). Refusing to run without a version — sidecars must record a real installer identity.`);
 }
 
 const HELP = `skillfit ${VERSION} — composite-skill curator + opt-in installer

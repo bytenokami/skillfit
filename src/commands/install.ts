@@ -58,7 +58,7 @@ export async function runInstall(opts: InstallOptions): Promise<InstallSummary> 
     }
   }
 
-  const hadBlock = results.some((r) => r.status === "blocked-conflict" || r.status === "blocked-foreign");
+  const hadBlock = results.some((r) => r.status.startsWith("blocked-"));
   return { proposalName: proposal.proposedSkillName, results, hadBlock };
 }
 
@@ -74,10 +74,16 @@ function logResult(r: InstallResult): void {
       log.info(`${r.target}: unchanged (${r.skillFile})`);
       break;
     case "blocked-conflict":
-      log.warn(`${r.target}: blocked (conflict). ${r.reason ?? ""}`);
+      log.warn(`${r.target}: blocked (proposal change). ${r.reason ?? ""}`);
       break;
     case "blocked-foreign":
       log.warn(`${r.target}: blocked (foreign file). ${r.reason ?? ""}`);
+      break;
+    case "blocked-drift":
+      log.warn(`${r.target}: blocked (on-disk drift). ${r.reason ?? ""}`);
+      break;
+    case "blocked-symlink-escape":
+      log.warn(`${r.target}: blocked (symlink escape). ${r.reason ?? ""}`);
       break;
   }
 }
