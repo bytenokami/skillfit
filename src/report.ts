@@ -50,6 +50,33 @@ export function renderMarkdown(p: CompositeProposal): string {
     }
   }
   lines.push("");
+  lines.push("## Instruction topology");
+  lines.push("");
+  if (p.instructionTopology.length === 0) {
+    lines.push("_No agent instruction files detected._");
+  } else {
+    lines.push("| path | kind | target |");
+    lines.push("|------|------|--------|");
+    for (const t of p.instructionTopology) {
+      lines.push(`| \`${t.path}\` | ${t.kind} | ${t.target ? `\`${t.target}\`` : ""} |`);
+    }
+  }
+  lines.push("");
+  lines.push("## Recommendations");
+  lines.push("");
+  if (p.recommendations.length === 0) {
+    lines.push("_No recommendations._");
+  } else {
+    lines.push("| action | id | target | source | reason |");
+    lines.push("|--------|----|--------|--------|--------|");
+    for (const r of p.recommendations) {
+      const reason = r.reason.replace(/\|/g, "\\|");
+      lines.push(`| \`${r.action}\` | \`${r.id}\` | \`${r.target}\` | ${r.source} | ${reason} |`);
+    }
+    lines.push("");
+    lines.push("Each rec is descriptive only — curator never installs.");
+  }
+  lines.push("");
   return lines.join("\n");
 }
 

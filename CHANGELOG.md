@@ -1,5 +1,53 @@
 # Changelog
 
+## v0.3.0-rc.1 — 2026-05-07
+
+Folds in features from the codex Python prototype (`local-skill-curator`)
+so skillfit can replace it as canonical.
+
+### Added
+- **Recommendations engine** (`src/recommendations.ts`):
+  `skip` / `blocked` / `adapt` actions, each with `id`, `target`,
+  `reason`, `source`, `rollback`. Output as `proposal.recommendations`.
+- **Instruction-topology probe**: detects `agent_rules.md` canonical +
+  `AGENTS.md`/`CLAUDE.md` symlinks layout. Outputs as
+  `proposal.instructionTopology`. Drives the `skip` (unified) vs
+  `blocked` (un-unified) recommendation for `local/shared-agent-rules`.
+- **`generator-jp` boundary rec**: emits `blocked` when scanning a
+  workspace that contains a `generator-jp/` directory; surfaces the
+  CLAUDE.md hard rule against generated agent config there.
+- **C# detector**: scans for `*.csproj` / `*.sln` at depth ≤2; emits
+  `csharp` stack + candidate.
+- **Ruby detector**: `Gemfile` or any `.rb` file → `ruby` stack +
+  candidate.
+- **Apps Script detector**: `appsscript.json` at depth ≤3 → `apps-script`
+  stack + candidate.
+- Unity refinements: `unity-anima2d` via `Assets/Anima2D/` directory
+  heuristic; `unity-assetbundle-browser` package id mapping.
+- Markdown render: new `## Instruction topology` and `## Recommendations`
+  tables with explicit "curator never installs" footnote.
+
+### Changed
+- `gatherInputs` (synthesize) now prefers real files over symlinks when
+  multiple paths share content. Fixes canonical selection on the livly
+  pattern (agent_rules.md = canonical, AGENTS.md/CLAUDE.md = symlinks).
+
+### Verified on livly
+- `client-uk`: stacks `[unity, csharp]`, 21 candidates, topology shows
+  AGENTS.md + CLAUDE.md as files (not symlinks), so `local/shared-agent-rules`
+  recs as `blocked`. Stack adapt recs for unity + csharp.
+- `server-uk`: stacks `[go, infra]`, topology shows
+  `agent_rules.md` canonical + AGENTS/CLAUDE symlinks, so `skip` rec for
+  shared-agent-rules. Stack adapt recs for go + infra.
+- `gas-uk`: `apps-script` detected (was 0 in v0.2).
+- `tools-uk`: now reports both `python` + `ruby` (was just python in v0.2).
+- Umbrella `livly/`: `boundary/generator-jp` blocked rec fires.
+- 18/18 tests pass. Zero files written across all scans.
+
+### Position vs codex prototype
+With these features ported, codex's Python `local-skill-curator` is
+obsolete. Skillfit becomes canonical.
+
 ## v0.2.0-rc.1 — 2026-05-07
 
 **Breaking pivot.** skillfit becomes a curator (dry-run reporter), not an installer.

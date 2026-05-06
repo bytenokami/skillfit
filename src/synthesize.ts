@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { existsSync, lstatSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { sha256 } from "./util/hash.js";
@@ -39,7 +39,20 @@ export async function gatherInputs(repoRoot: string): Promise<SynthesizeInput[]>
       continue;
     }
   }
-  return out;
+  return out.sort((a, b) => {
+    const aSym = isSymlink(path.join(repoRoot, a.path));
+    const bSym = isSymlink(path.join(repoRoot, b.path));
+    if (aSym !== bSym) return aSym ? 1 : -1;
+    return a.path.localeCompare(b.path);
+  });
+}
+
+function isSymlink(fullPath: string): boolean {
+  try {
+    return lstatSync(fullPath).isSymbolicLink();
+  } catch {
+    return false;
+  }
 }
 
 function deterministicDistill(inputs: SynthesizeInput[]): string {

@@ -3,7 +3,7 @@ import { existsSync, statSync } from "node:fs";
 import path from "node:path";
 import { log } from "./util/log.js";
 
-export type StackKind = "ts" | "unity" | "go" | "python" | "infra";
+export type StackKind = "ts" | "unity" | "go" | "python" | "infra" | "csharp" | "ruby" | "apps-script";
 
 export interface BootstrapCandidate {
   id: string;
@@ -58,6 +58,7 @@ const UNITY_STACK: Record<string, string> = {
   "com.coffee.softmask-for-ugui": "unity-softmask",
   "com.coffee.ui-effect": "unity-ui-effect",
   "com.coffee.ui-particle": "unity-ui-particle",
+  "com.unity.assetbundlebrowser": "unity-assetbundle-browser",
 };
 
 const UNITY_PLUGIN_DIR_HEURISTICS: Record<string, string> = {
@@ -158,6 +159,12 @@ export async function bootstrap(repoRoot: string): Promise<BootstrapResult> {
   if (py) detections.push(py);
   const infra = await detectInfra(repoRoot);
   if (infra) detections.push(infra);
+  const cs = await detectCsharp(repoRoot);
+  if (cs) detections.push(cs);
+  const rb = await detectRuby(repoRoot);
+  if (rb) detections.push(rb);
+  const gas = await detectAppsScript(repoRoot);
+  if (gas) detections.push(gas);
 
   const seen = new Set<string>();
   const candidates: BootstrapCandidate[] = [];
@@ -245,6 +252,10 @@ async function detectUnity(repoRoot: string): Promise<StackDetection | null> {
     } catch {
       /* ignore */
     }
+  }
+
+  if (existsSync(path.join(repoRoot, "Assets", "Anima2D"))) {
+    push("unity-anima2d", "unity-asset-dir:Assets/Anima2D");
   }
 
   try {
@@ -464,4 +475,97 @@ async function findPyFiles(root: string, maxDepth: number): Promise<string[]> {
   }
   await walk(root, 0);
   return out;
+}
+
+async function detectCsharp(repoRoot: string): Promise<StackDetection | null> {
+  const evidence: string[] = [];
+  async function walk(dir: string, depth: number): Promise<void> {
+    if (depth > 2) return;
+    let entries: import("node:fs").Dirent[];
+    try {
+      entries = await readdir(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (entry.name.startsWith(".") || entry.name === "node_modules" || entry.name === "vendor") continue;
+      const full = path.join(dir, entry.name);
+      if (entry.isFile()) {
+        if (entry.name.endsWith(".csproj") || entry.name.endsWith(".sln")) {
+          evidence.push(path.relative(repoRoot, full));
+        }
+      } else if (entry.isDirectory()) {
+        await walk(full, depth + 1);
+      }
+    }
+  }
+  await walk(repoRoot, 0);
+  if (evidence.length === 0) return null;
+  return {
+    kind: "csharp",
+    candidates: [{ id: "csharp", reason: `csproj-or-sln:${evidence[0]}`, stack: "csharp", importRoot: null }],
+  };
+}
+
+async function detectRuby(repoRoot: string): Promise<StackDetection | null> {
+  const gemfile = path.join(repoRoot, "Gemfile");
+  let evidence: string | null = null;
+  if (existsSync(gemfile)) {
+    evidence = "Gemfile";
+  } else {
+    async function walk(dir: string, depth: number): Promise<void> {
+      if (evidence || depth > 2) return;
+      let entries: import("node:fs").Dirent[];
+      try {
+        entries = await readdir(dir, { withFileTypes: true });
+      } catch {
+        return;
+      }
+      for (const entry of entries) {
+        if (evidence) return;
+        if (entry.name.startsWith(".") || entry.name === "node_modules" || entry.name === "vendor") continue;
+        const full = path.join(dir, entry.name);
+        if (entry.isFile() && entry.name.endsWith(".rb")) {
+          evidence = path.relative(repoRoot, full);
+          return;
+        }
+        if (entry.isDirectory()) await walk(full, depth + 1);
+      }
+    }
+    await walk(repoRoot, 0);
+  }
+  if (!evidence) return null;
+  return {
+    kind: "ruby",
+    candidates: [{ id: "ruby", reason: `ruby-source:${evidence}`, stack: "ruby", importRoot: null }],
+  };
+}
+
+async function detectAppsScript(repoRoot: string): Promise<StackDetection | null> {
+  let evidence: string | null = null;
+  async function walk(dir: string, depth: number): Promise<void> {
+    if (evidence || depth > 3) return;
+    let entries: import("node:fs").Dirent[];
+    try {
+      entries = await readdir(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (evidence) return;
+      if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
+      const full = path.join(dir, entry.name);
+      if (entry.isFile() && entry.name === "appsscript.json") {
+        evidence = path.relative(repoRoot, full);
+        return;
+      }
+      if (entry.isDirectory()) await walk(full, depth + 1);
+    }
+  }
+  await walk(repoRoot, 0);
+  if (!evidence) return null;
+  return {
+    kind: "apps-script",
+    candidates: [{ id: "apps-script", reason: `appsscript-manifest:${evidence}`, stack: "apps-script", importRoot: null }],
+  };
 }

@@ -3,6 +3,7 @@ import { lstatSync } from "node:fs";
 import { bootstrap, type BootstrapCandidate, type StackKind } from "./bootstrap.js";
 import { synthesize, gatherInputs, type SynthesizeInput } from "./synthesize.js";
 import { sha256 } from "./util/hash.js";
+import { buildRecommendations, detectInstructionTopology, type InstructionFile, type Recommendation } from "./recommendations.js";
 
 export type InputStatus = "present" | "empty" | "unparseable" | "symlink-dup";
 
@@ -28,6 +29,8 @@ export interface CompositeProposal {
   candidates: CandidateRef[];
   stacks: StackKind[];
   noise: { reason: string }[];
+  instructionTopology: InstructionFile[];
+  recommendations: Recommendation[];
 }
 
 const MAX_BODY_TOKENS = 1500;
@@ -69,6 +72,14 @@ export async function runScan(repoRoot: string): Promise<CompositeProposal> {
     noise.push({ reason: `body draft hit ~${MAX_BODY_TOKENS} token cap; truncated` });
   }
 
+  const instructionTopology = await detectInstructionTopology(resolved);
+  const recommendations = buildRecommendations({
+    repoRoot: resolved,
+    candidates,
+    topology: instructionTopology,
+    stacks: boot.stacks,
+  });
+
   return {
     workspace: resolved,
     scannedAt: new Date().toISOString(),
@@ -79,6 +90,8 @@ export async function runScan(repoRoot: string): Promise<CompositeProposal> {
     candidates,
     stacks: boot.stacks,
     noise,
+    instructionTopology,
+    recommendations,
   };
 }
 

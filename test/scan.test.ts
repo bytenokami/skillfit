@@ -63,11 +63,37 @@ test("body draft does not duplicate symlinked rule content", async () => {
   const matches = p.bodyDraft.split(ruleLine).length - 1;
   assert.equal(matches, 1, `rule line should appear once in body, found ${matches}`);
 
-  const claudeSections = p.bodyDraft.split("### From `CLAUDE.md`").length - 1;
-  assert.equal(claudeSections, 1, `canonical section should appear once`);
+  const canonicalSections = p.bodyDraft.split("### From `agent_rules.md`").length - 1;
+  assert.equal(canonicalSections, 1, `canonical section should appear once`);
 
   const dupStatuses = p.inputs.filter((i) => i.status === "symlink-dup");
   assert.equal(dupStatuses.length, 2, "two symlinked inputs should be marked symlink-dup");
 
   assert.ok(p.bodyDraft.includes("symlink-dup"), "body should note duplicate paths inline");
+});
+
+test("instruction topology + skip rec on unified rule files", async () => {
+  const dupFixture = path.resolve(__dirname, "fixtures", "dup-rules");
+  const p = await runScan(dupFixture);
+
+  assert.ok(p.instructionTopology.length >= 3, "topology should list canonical + symlinks");
+  const symlinks = p.instructionTopology.filter((t) => t.kind === "symlink");
+  assert.ok(symlinks.length >= 2, "AGENTS.md and CLAUDE.md should be detected as symlinks");
+
+  const skipRec = p.recommendations.find((r) => r.id === "local/shared-agent-rules" && r.action === "skip");
+  assert.ok(skipRec, "unified topology should produce a 'skip' rec for shared-agent-rules");
+});
+
+test("recommendations include adapt entries per detected stack", async () => {
+  const p = await runScan(SAMPLE);
+  const tsAdapt = p.recommendations.find((r) => r.target === "ts" && r.action === "adapt");
+  assert.ok(tsAdapt, "ts stack should produce adapt rec");
+});
+
+test("renderMarkdown includes recommendations block", async () => {
+  const p = await runScan(SAMPLE);
+  const { renderMarkdown } = await import("../src/report.js");
+  const md = renderMarkdown(p);
+  assert.ok(md.includes("## Recommendations"));
+  assert.ok(md.includes("## Instruction topology"));
 });
