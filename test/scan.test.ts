@@ -120,6 +120,84 @@ test("topology skip rec requires symlinks to resolve to canonical agent_rules.md
   }
 });
 
+test("content-dup distinct from symlink-dup (issue #1)", async () => {
+  const { mkdtempSync, rmSync, writeFileSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const dir = mkdtempSync(path.join(tmpdir(), "skillfit-content-dup-"));
+  try {
+    const content = "# rules\n- one\n- two\n- three\n";
+    writeFileSync(path.join(dir, "CLAUDE.md"), content);
+    writeFileSync(path.join(dir, "AGENTS.md"), content);
+
+    const p = await runScan(dir);
+    const claude = p.inputs.find((i) => i.path === "CLAUDE.md");
+    const agents = p.inputs.find((i) => i.path === "AGENTS.md");
+    assert.ok(claude && agents);
+
+    const dups = p.inputs.filter((i) => i.status === "content-dup" || i.status === "symlink-dup");
+    assert.equal(dups.length, 1, "exactly one of the pair should be flagged duplicate");
+    assert.equal(dups[0]!.status, "content-dup", "regular-file dup must be content-dup, not symlink-dup");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("body cap noise flag fires on oversized rule input (issue #2)", async () => {
+  const { mkdtempSync, rmSync, writeFileSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const dir = mkdtempSync(path.join(tmpdir(), "skillfit-oversize-"));
+  try {
+    const big = Array.from({ length: 800 }, (_, i) => `- rule line ${i} with enough text to consume tokens consistently`).join("\n");
+    writeFileSync(path.join(dir, "CLAUDE.md"), `# rules\n${big}\n`);
+
+    const p = await runScan(dir);
+    const truncatedNoise = p.noise.find((n) => n.reason.includes("token cap"));
+    assert.ok(truncatedNoise, `expected truncation noise flag; got ${JSON.stringify(p.noise)}`);
+    assert.ok(p.bodyDraft.includes("[truncated"), "body should carry truncation marker");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("Go v2 sub-package classified as v2, not v1 (issue #5)", async () => {
+  const { mkdtempSync, rmSync, writeFileSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const dir = mkdtempSync(path.join(tmpdir(), "skillfit-go-v2-"));
+  try {
+    writeFileSync(
+      path.join(dir, "go.mod"),
+      `module example.com/test\n\ngo 1.22\n\nrequire (\n\tgithub.com/aws/aws-sdk-go-v2/service/s3 v1.0.0\n\tgithub.com/aws/aws-sdk-go-v2/config v1.0.0\n)\n`,
+    );
+
+    const p = await runScan(dir);
+    const ids = p.candidates.map((c) => c.id);
+    assert.ok(ids.includes("go-aws-sdk-v2"), `expected go-aws-sdk-v2; got ${ids.join(", ")}`);
+    assert.ok(!ids.includes("go-aws-sdk-v1"), `must not classify v2 sub-pkg as v1`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("nested AGENTS.md does not break root unification check (issue #4)", async () => {
+  const { mkdtempSync, rmSync, writeFileSync, mkdirSync, symlinkSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const dir = mkdtempSync(path.join(tmpdir(), "skillfit-nested-"));
+  try {
+    writeFileSync(path.join(dir, "agent_rules.md"), "# canonical\n- one\n- two\n- three\n");
+    symlinkSync("agent_rules.md", path.join(dir, "AGENTS.md"));
+    symlinkSync("agent_rules.md", path.join(dir, "CLAUDE.md"));
+
+    mkdirSync(path.join(dir, "subproj"));
+    writeFileSync(path.join(dir, "subproj", "AGENTS.md"), "# subproject\n- a\n- b\n");
+
+    const p = await runScan(dir);
+    const skipRec = p.recommendations.find((r) => r.id === "local/shared-agent-rules" && r.action === "skip");
+    assert.ok(skipRec, `nested rule file must not block root unification; got recs: ${JSON.stringify(p.recommendations.map((r) => `${r.action}/${r.id}`))}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("CLI --version reports package.json version (no drift)", async () => {
   const { execFileSync } = await import("node:child_process");
   const cliPath = path.resolve(__dirname, "..", "dist", "cli.js");

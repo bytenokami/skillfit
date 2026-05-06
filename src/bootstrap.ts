@@ -340,10 +340,11 @@ function parseGoModRequires(body: string): string[] {
   return out;
 }
 
+const GO_STACK_PREFIXES_BY_LENGTH = Object.entries(GO_STACK).sort((a, b) => b[0].length - a[0].length);
+
 function matchGoStack(modulePath: string): string | null {
   if (GO_STACK[modulePath]) return GO_STACK[modulePath]!;
-  for (const [prefix, id] of Object.entries(GO_STACK)) {
-    if (modulePath === prefix) return id;
+  for (const [prefix, id] of GO_STACK_PREFIXES_BY_LENGTH) {
     if (modulePath.startsWith(prefix + "/")) return id;
   }
   return null;

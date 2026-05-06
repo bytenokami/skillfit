@@ -3,6 +3,7 @@ import { readdir } from "node:fs/promises";
 import path from "node:path";
 import type { CandidateRef } from "./scan.js";
 import type { StackKind } from "./bootstrap.js";
+import { CANDIDATE_RULE_FILES } from "./synthesize.js";
 
 export type Action = "skip" | "blocked" | "adapt";
 
@@ -21,7 +22,7 @@ export interface InstructionFile {
   target: string;
 }
 
-const RULE_FILE_NAMES = new Set(["AGENTS.md", "CLAUDE.md", "agent_rules.md"]);
+const RULE_FILE_NAMES = new Set(CANDIDATE_RULE_FILES.map((p) => path.basename(p)));
 
 export async function detectInstructionTopology(repoRoot: string): Promise<InstructionFile[]> {
   const out: InstructionFile[] = [];
@@ -116,9 +117,10 @@ export function buildRecommendations(args: {
 }): Recommendation[] {
   const recs: Recommendation[] = [];
 
-  const sharedEntry = args.topology.find((t) => t.path === "agent_rules.md" && t.kind === "file");
-  const agentsLink = args.topology.find((t) => t.path === "AGENTS.md");
-  const claudeLink = args.topology.find((t) => t.path === "CLAUDE.md");
+  const rootTopology = args.topology.filter((t) => path.dirname(t.path) === ".");
+  const sharedEntry = rootTopology.find((t) => t.path === "agent_rules.md" && t.kind === "file");
+  const agentsLink = rootTopology.find((t) => t.path === "AGENTS.md");
+  const claudeLink = rootTopology.find((t) => t.path === "CLAUDE.md");
   const unifiedTopology = !!sharedEntry
     && agentsLink?.kind === "symlink"
     && claudeLink?.kind === "symlink"
@@ -134,7 +136,7 @@ export function buildRecommendations(args: {
       source: "instruction-topology probe",
       rollback: "No rollback needed — this recommendation writes nothing.",
     });
-  } else if (args.topology.length > 0) {
+  } else if (rootTopology.length > 0) {
     recs.push({
       action: "blocked",
       id: "local/shared-agent-rules",

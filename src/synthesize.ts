@@ -11,7 +11,7 @@ const __dirname = path.dirname(__filename);
 const TEMPLATE_VERSION = "v1";
 const TEMPLATE_PATH = path.resolve(__dirname, "..", "templates", "repo-rules.skill.tmpl.md");
 
-const CANDIDATE_RULE_FILES = ["CLAUDE.md", "AGENTS.md", ".cursor/rules", "agent_rules.md"];
+export const CANDIDATE_RULE_FILES = ["CLAUDE.md", "AGENTS.md", ".cursor/rules", "agent_rules.md"];
 
 export interface SynthesizeInput {
   path: string;

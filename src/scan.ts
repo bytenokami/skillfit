@@ -5,7 +5,7 @@ import { synthesize, gatherInputs, type SynthesizeInput } from "./synthesize.js"
 import { sha256 } from "./util/hash.js";
 import { buildRecommendations, detectInstructionTopology, type InstructionFile, type Recommendation } from "./recommendations.js";
 
-export type InputStatus = "present" | "empty" | "unparseable" | "symlink-dup";
+export type InputStatus = "present" | "empty" | "unparseable" | "symlink-dup" | "content-dup";
 
 export interface InputRecord {
   path: string;
@@ -54,8 +54,8 @@ export async function runScan(repoRoot: string): Promise<CompositeProposal> {
   }));
 
   const proposedSkillName = `livly-${repoName.toLowerCase()}`;
-  const description = buildDescription(repoName, boot.stacks, inputs, candidates);
-  const bodyDraft = buildBodyDraft({
+  const description = capString(buildDescription(repoName, boot.stacks, inputs, candidates), MAX_DESCRIPTION_TOKENS);
+  const rawBody = buildBodyDraft({
     repoName,
     workspace: resolved,
     stacks: boot.stacks,
@@ -63,13 +63,15 @@ export async function runScan(repoRoot: string): Promise<CompositeProposal> {
     candidates,
     ruleSummary: extractRuleSummary(synth.body),
   });
+  const truncated = capTokens(rawBody) >= MAX_BODY_TOKENS;
+  const bodyDraft = capString(rawBody, MAX_BODY_TOKENS);
 
   const noise: { reason: string }[] = [];
   if (boot.stacks.length === 0 && inputs.length === 0) {
     noise.push({ reason: "no rule files and no recognized stack — composite proposal would be empty" });
   }
-  if (capTokens(bodyDraft) >= MAX_BODY_TOKENS) {
-    noise.push({ reason: `body draft hit ~${MAX_BODY_TOKENS} token cap; truncated` });
+  if (truncated) {
+    noise.push({ reason: `body draft hit ~${MAX_BODY_TOKENS} token cap; truncated to fit (raw was ~${capTokens(rawBody)} tokens)` });
   }
 
   const instructionTopology = await detectInstructionTopology(resolved);
@@ -104,12 +106,13 @@ function classifyInputs(rawInputs: SynthesizeInput[], repoRoot: string): InputRe
   for (const input of rawInputs) {
     let status: InputStatus;
     const trimmed = input.content.trim();
+    const isDup = (byHash.get(input.hash) ?? 0) > 1 && seen.has(input.hash);
     if (trimmed.length === 0) {
       status = "empty";
-    } else if (isSymlink(path.join(repoRoot, input.path)) && (byHash.get(input.hash) ?? 0) > 1 && seen.has(input.hash)) {
+    } else if (isDup && isSymlink(path.join(repoRoot, input.path))) {
       status = "symlink-dup";
-    } else if ((byHash.get(input.hash) ?? 0) > 1 && seen.has(input.hash)) {
-      status = "symlink-dup";
+    } else if (isDup) {
+      status = "content-dup";
     } else {
       status = "present";
     }
@@ -137,8 +140,7 @@ function buildDescription(
   const ruleHint = inputs.length === 0 ? "no rule files" : `rules from ${inputs.filter((i) => i.status === "present").map((i) => i.path).join(", ") || "(none usable)"}`;
   const topCandidates = candidates.slice(0, 5).map((c) => c.id).join(", ");
   const more = candidates.length > 5 ? `, +${candidates.length - 5} more` : "";
-  const desc = `Composite proposal for ${repoName} (${stackLabel}). ${ruleHint}. Detected: ${topCandidates || "(no deps)"}${more}. Use this skill for tasks scoped to the ${repoName} repository; load deeper per-library skills on demand.`;
-  return capString(desc, MAX_DESCRIPTION_TOKENS);
+  return `Composite proposal for ${repoName} (${stackLabel}). ${ruleHint}. Detected: ${topCandidates || "(no deps)"}${more}. Use this skill for tasks scoped to the ${repoName} repository; load deeper per-library skills on demand.`;
 }
 
 function buildBodyDraft(args: {
@@ -206,7 +208,7 @@ ${inputsBlock}
 ---
 *Curator output. Not installed. Copy the relevant sections into your skill registry if you choose to install.*`;
 
-  return capString(body, MAX_BODY_TOKENS);
+  return body;
 }
 
 function extractRuleSummary(synthBody: string): string {

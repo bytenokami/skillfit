@@ -1,5 +1,63 @@
 # Changelog
 
+## v0.3.0-rc.3 — 2026-05-07
+
+Principal-engineer review fixes — five issues, three blocking.
+
+### Fixed (blocking)
+- **`content-dup` status added; `symlink-dup` no longer mislabels real
+  duplicate files** (`src/scan.ts`). Verified live on `client-uk` where
+  `AGENTS.md` and `CLAUDE.md` are regular files with identical bytes
+  and were previously reported as `symlink-dup`. New status taxonomy:
+  `present | empty | unparseable | symlink-dup | content-dup`. Status
+  no longer contradicts the topology rec.
+- **Body-cap noise flag now actually fires** (`src/scan.ts`). Truncation
+  signal was computed against the *post-cap* string, so the inequality
+  was unreachable. Fix: capture `truncated = capTokens(rawBody) >= cap`
+  before `capString`, then push the noise entry. Live runs against
+  oversized rule files now carry the warning.
+- **`dist/` cleaned + dead `diff` dep dropped** (`package.json`).
+  Previous `tsc` invocations did not clean `outDir`, so removed
+  `commands/` and `emit/` modules from the curator-pivot lingered in
+  the published tarball, dragging the `diff` runtime dependency in
+  through `dist/commands/review.js`. Added `prebuild: rm -rf dist`,
+  removed `diff` and `@types/diff`. Tarball now contains only
+  bootstrap / cli / probe / recommendations / report / scan /
+  synthesize + util.
+
+### Fixed (ticketable, also done)
+- **Topology vs synthesize rule-file set unified** (`src/synthesize.ts`,
+  `src/recommendations.ts`). `CANDIDATE_RULE_FILES` is exported from
+  synthesize and consumed by recommendations to derive
+  `RULE_FILE_NAMES`. Single source of truth.
+- **Topology unification check now root-only** (`src/recommendations.ts`).
+  Nested `AGENTS.md` files in subprojects no longer poison the
+  unification decision; the check filters topology to
+  `path.dirname(t.path) === "."` before voting.
+- **Go v2 sub-package classification fixed** (`src/bootstrap.ts`).
+  `matchGoStack` now sorts known module prefixes by length
+  descending, so `github.com/aws/aws-sdk-go-v2/service/s3` correctly
+  hits `go-aws-sdk-v2` instead of `go-aws-sdk-v1`.
+
+### Added tests
+- `content-dup distinct from symlink-dup (issue #1)`
+- `body cap noise flag fires on oversized rule input (issue #2)`
+- `Go v2 sub-package classified as v2, not v1 (issue #5)`
+- `nested AGENTS.md does not break root unification check (issue #4)`
+
+### Verified
+- 24/24 tests pass.
+- `node dist/cli.js --version` prints `0.3.0-rc.3`.
+- `dist/` has only live modules; no `commands/` or `emit/` dead dirs.
+- `node_modules` has zero non-dev deps.
+- client-uk live: AGENTS.md=present, CLAUDE.md=content-dup, recs
+  correctly emit `blocked` for `local/shared-agent-rules` (not skip).
+
+### Architecture concern (not addressed in this rc)
+The hand-coded `*_STACK` records in `src/bootstrap.ts` will become a
+merge-conflict magnet as ecosystems grow. Pull the registry into a
+JSON file and share one walker between detectors. Tracked for v0.4.
+
 ## v0.3.0-rc.2 — 2026-05-07
 
 Review fixes from the codex review of v0.3.0-rc.1.
