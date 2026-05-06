@@ -9,7 +9,7 @@ const VERSION = "0.1.0-rc.1";
 const HELP = `skillfit ${VERSION}
 
 Usage:
-  skillfit init [--yes]      Detect stack, synthesize repo-rules, write lockfile + .claude/skills
+  skillfit init [--yes] [--dry-run]   Detect stack, synthesize repo-rules, write lockfile + .claude/skills
   skillfit review [--yes]    Diff repo-rules synthesis vs last approved; require approval before emit
   skillfit emit              Re-emit currently-approved skills from lockfile
   skillfit check             Exit non-zero if synthesis drifted from approved hash (CI gate)
@@ -25,24 +25,26 @@ Environment:
   SKILLFIT_LOG=silent|error|warn|info|debug   Log level (default: info)
 `;
 
-function parseArgs(argv: string[]): { cmd: string | null; yes: boolean; cwd: string; help: boolean } {
+function parseArgs(argv: string[]): { cmd: string | null; yes: boolean; cwd: string; help: boolean; dryRun: boolean } {
   const args = argv.slice(2);
   let cmd: string | null = null;
   let yes = false;
   let cwd = process.cwd();
   let help = false;
+  let dryRun = false;
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     if (a === "--help" || a === "-h") help = true;
     else if (a === "--yes" || a === "-y") yes = true;
+    else if (a === "--dry-run" || a === "-n") dryRun = true;
     else if (a === "--cwd") cwd = args[++i] ?? cwd;
     else if (!cmd && !a?.startsWith("-")) cmd = a ?? null;
   }
-  return { cmd, yes, cwd, help };
+  return { cmd, yes, cwd, help, dryRun };
 }
 
 async function main(): Promise<number> {
-  const { cmd, yes, cwd, help } = parseArgs(process.argv);
+  const { cmd, yes, cwd, help, dryRun } = parseArgs(process.argv);
 
   if (help || !cmd || cmd === "help") {
     process.stdout.write(HELP);
@@ -55,7 +57,7 @@ async function main(): Promise<number> {
       return 0;
 
     case "init": {
-      const result = await runInit({ repoRoot: cwd, yes });
+      const result = await runInit({ repoRoot: cwd, yes, dryRun });
       return result.pendingApproval > 0 ? 0 : 0;
     }
 

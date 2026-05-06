@@ -1,6 +1,6 @@
 import path from "node:path";
-import { bootstrap } from "../bootstrap.js";
-import { probe, isUsed } from "../probe.js";
+import { bootstrap, type BootstrapCandidate } from "../bootstrap.js";
+import { probe, type ProbeResult } from "../probe.js";
 import { synthesize } from "../synthesize.js";
 import { emitClaude } from "../emit/claude.js";
 import {
@@ -17,17 +17,21 @@ import { sha256 } from "../util/hash.js";
 export interface InitOptions {
   repoRoot: string;
   yes: boolean;
+  dryRun?: boolean;
 }
 
-export async function runInit(opts: InitOptions): Promise<{ lock: Lockfile; emitted: number; pendingApproval: number }> {
+export async function runInit(opts: InitOptions): Promise<{ lock: Lockfile; emitted: number; pendingApproval: number; dryRun: boolean }> {
   const repoRoot = path.resolve(opts.repoRoot);
-  log.info(`skillfit init at ${repoRoot}`);
+  const dryRun = !!opts.dryRun;
+  log.info(`skillfit init at ${repoRoot}${dryRun ? " (dry-run; no files written)" : ""}`);
 
   const boot = await bootstrap(repoRoot);
-  log.ok(`bootstrap: ${boot.candidates.length} candidate skill(s) from ${boot.source}`);
+  log.ok(`bootstrap: ${boot.candidates.length} candidate skill(s) across stacks: [${boot.stacks.join(", ") || "none"}]`);
 
-  const probeResult = await probe(repoRoot);
-  log.ok(`probe: ${probeResult.usage.size} unique import root(s) detected`);
+  const probeResult = boot.stacks.includes("ts")
+    ? await probe(repoRoot)
+    : { usage: new Map() } as ProbeResult;
+  if (probeResult.usage.size > 0) log.ok(`probe: ${probeResult.usage.size} unique import root(s) detected`);
 
   const existing = (await readLock(path.join(repoRoot, "skillfit-lock.json"))) ?? emptyLock(boot.autoskillsVersion);
   const lock: Lockfile = {
@@ -36,15 +40,14 @@ export async function runInit(opts: InitOptions): Promise<{ lock: Lockfile; emit
   };
 
   const dropped: { id: string; reason: string }[] = [];
-  const verifiedFromAutoskills: string[] = [];
+  const verifiedSkillIds: BootstrapCandidate[] = [];
 
   for (const cand of boot.candidates) {
-    const dep = depForSkill(cand.id);
-    if (dep && !isUsed(probeResult, dep)) {
-      dropped.push({ id: cand.id, reason: `0 import sites for ${dep}` });
+    if (cand.importRoot && !isUsed(probeResult, cand.importRoot)) {
+      dropped.push({ id: cand.id, reason: `0 import sites for ${cand.importRoot}` });
       continue;
     }
-    const placeholderBody = autoskillsPlaceholderBody(cand.id);
+    const placeholderBody = placeholderFor(cand);
     const entry: SkillEntry = {
       id: cand.id,
       origin: "verified",
@@ -52,7 +55,7 @@ export async function runInit(opts: InitOptions): Promise<{ lock: Lockfile; emit
       hash: sha256(placeholderBody),
     };
     upsertSkill(lock, entry);
-    verifiedFromAutoskills.push(cand.id);
+    verifiedSkillIds.push(cand);
   }
 
   const synth = await synthesize(repoRoot);
@@ -64,80 +67,54 @@ export async function runInit(opts: InitOptions): Promise<{ lock: Lockfile; emit
     inputs: synth.inputs,
     model: synth.mode === "llm" ? "anthropic" : "deterministic",
   };
-
   const previous = lock.skills.find((s) => s.id === "repo-rules");
   if (previous && previous.approvedHash === synth.hash) {
     synthEntry.approvedAt = previous.approvedAt;
     synthEntry.approvedHash = previous.approvedHash;
   }
-
   upsertSkill(lock, synthEntry);
   lock.dropped = dropped;
 
-  const skillsToEmit = [
-    ...verifiedFromAutoskills.map((id) => ({ id, body: autoskillsPlaceholderBody(id) })),
-  ];
-
+  const skillsToEmit = verifiedSkillIds.map((c) => ({ id: c.id, body: placeholderFor(c) }));
   if (synthEntry.approvedHash === synth.hash) {
     skillsToEmit.push({ id: "repo-rules", body: synth.body });
+  }
+
+  const pendingApproval = synthEntry.approvedHash === synth.hash ? 0 : 1;
+
+  if (dryRun) {
+    log.info(`would emit ${skillsToEmit.length} skill file(s): ${skillsToEmit.map((s) => s.id).join(", ") || "(none)"}`);
+    if (dropped.length > 0) log.info(`would drop ${dropped.length} skill(s): ${dropped.map((d) => d.id).join(", ")}`);
+    if (pendingApproval > 0) log.info(`would mark repo-rules pending approval`);
+    log.info(`would write lockfile with ${lock.skills.length} skill entr(ies)`);
+    return { lock, emitted: 0, pendingApproval, dryRun: true };
   }
 
   const emitted = await emitClaude(repoRoot, skillsToEmit);
   await writeLock(lock, path.join(repoRoot, "skillfit-lock.json"));
 
-  const pendingApproval = synthEntry.approvedHash === synth.hash ? 0 : 1;
-
   log.ok(`emitted ${emitted.length} skill(s) to .claude/skills/`);
   if (dropped.length > 0) log.info(`dropped ${dropped.length} unused skill(s): ${dropped.map((d) => d.id).join(", ")}`);
   if (pendingApproval > 0) log.warn(`repo-rules synthesis pending approval. Run: skillfit review`);
 
-  return { lock, emitted: emitted.length, pendingApproval };
+  return { lock, emitted: emitted.length, pendingApproval, dryRun: false };
 }
 
-function depForSkill(skillId: string): string | null {
-  const map: Record<string, string> = {
-    react: "react",
-    nextjs: "next",
-    vue: "vue",
-    nuxt: "nuxt",
-    svelte: "svelte",
-    angular: "@angular/core",
-    astro: "astro",
-    tailwind: "tailwindcss",
-    typescript: "typescript",
-    express: "express",
-    hono: "hono",
-    nestjs: "@nestjs/core",
-    prisma: "prisma",
-    drizzle: "drizzle-orm",
-    zod: "zod",
-    vitest: "vitest",
-    playwright: "@playwright/test",
-    supabase: "@supabase/supabase-js",
-    "better-auth": "better-auth",
-    clerk: "@clerk/nextjs",
-    stripe: "stripe",
-    "react-hook-form": "react-hook-form",
-    threejs: "three",
-    gsap: "gsap",
-    expo: "expo",
-    "react-native": "react-native",
-  };
-  return map[skillId] ?? null;
+function isUsed(p: ProbeResult, dep: string): boolean {
+  const u = p.usage.get(dep);
+  return !!u && u.sites > 0;
 }
 
-function autoskillsPlaceholderBody(id: string): string {
+function placeholderFor(cand: BootstrapCandidate): string {
   return `---
-name: ${id}
-description: Placeholder skill for ${id}. Real content will be fetched from the autoskills registry on first emit.
+name: ${cand.id}
+description: Placeholder skill for ${cand.id} (${cand.stack}). Reason: ${cand.reason}. Real content from autoskills/skillfit-registry pending RC-2.
 type: stack
-origin: autoskills
+origin: ${cand.stack === "ts" ? "autoskills" : "skillfit-registry"}
 ---
 
-# ${id}
+# ${cand.id}
 
-This is a placeholder generated by skillfit MVP. The real skill body will be pulled from the autoskills registry once the integration boundary is wired up (see RELEASE_CHECKLIST.md).
-
-For now, this file exists to validate the end-to-end flow: detect → emit → lock.
+Placeholder body. Detected via stack=${cand.stack}, source=${cand.reason}.
 `;
 }
