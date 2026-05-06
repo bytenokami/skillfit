@@ -1,5 +1,35 @@
 # Changelog
 
+## v0.3.0-rc.2 — 2026-05-07
+
+Review fixes from the codex review of v0.3.0-rc.1.
+
+### Fixed
+- **CLI version drift (blocking).** `src/cli.ts` no longer hardcodes
+  the version. Reads from `package.json` at runtime via
+  `import.meta.url`-relative resolution. New test `CLI --version
+  reports package.json version (no drift)` runs the built CLI and
+  asserts the output matches `package.json`. Closes the v0.3.0-rc.1
+  ship blocker where `--version` printed `0.2.0-rc.1`.
+- **Topology skip false-positive (blocking).** `unifiedTopology` in
+  `recommendations.ts` now requires `AGENTS.md` and `CLAUDE.md` to
+  actually `realpath` to the canonical `agent_rules.md`, not just
+  be symlinks. New test `topology skip rec requires symlinks to
+  resolve to canonical agent_rules.md` exercises a fixture where
+  the symlinks point to a decoy file. The rec must be `blocked`,
+  never `skip`, in that case.
+- **Markdown rollback column (polish).** `## Recommendations` table
+  in markdown output now includes the `rollback` field so the human
+  default surface no longer drops a useful column relative to JSON.
+- **README stale (polish).** Stack list extended (csharp, ruby,
+  apps-script) and JSON shape updated to include
+  `instructionTopology[]` and `recommendations[]`.
+
+### Verified
+- 20/20 tests pass.
+- `node dist/cli.js --version` prints `0.3.0-rc.2`.
+- Recommendations table renders with rollback column in markdown.
+
 ## v0.3.0-rc.1 — 2026-05-07
 
 Folds in features from the codex Python prototype (`local-skill-curator`)

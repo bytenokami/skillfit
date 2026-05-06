@@ -1,11 +1,30 @@
 #!/usr/bin/env node
+import { readFileSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { runScan } from "./scan.js";
 import { renderMarkdown, renderJson } from "./report.js";
 import { log } from "./util/log.js";
 
-const VERSION = "0.2.0-rc.1";
+const VERSION = readVersion();
+
+function readVersion(): string {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const candidates = [
+    path.resolve(here, "..", "package.json"),
+    path.resolve(here, "..", "..", "package.json"),
+  ];
+  for (const p of candidates) {
+    try {
+      const pkg = JSON.parse(readFileSync(p, "utf8")) as { version?: string };
+      if (pkg.version) return pkg.version;
+    } catch {
+      continue;
+    }
+  }
+  return "0.0.0-unknown";
+}
 
 const HELP = `skillfit ${VERSION} — composite-proposal curator (dry-run, never installs)
 

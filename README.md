@@ -13,13 +13,15 @@ npx skillfit --output report.md           # write single report file
 
 For one workspace:
 
-1. Detects stack(s): TS/JS, Unity, Go, Python, Infra (Jenkins / Docker / Terraform).
+1. Detects stack(s): TS/JS, Unity, Go, Python, C#, Ruby, Apps Script, Infra (Jenkins / Docker / Terraform).
 2. Scans rule files: `CLAUDE.md`, `AGENTS.md`, `agent_rules.md`, `.cursor/rules`. Classifies each: `present | empty | unparseable | symlink-dup`.
 3. Distills a thin composite-skill draft scoped per-repo (`livly-<repo>`):
    - 100–150 token description
    - ≤1500 token body (identity → rule summary → stack inventory → deep-dive references)
    - Candidate dep skill ids with evidence
-4. Prints to stdout (markdown by default) or `--output <file>`.
+4. Probes instruction topology: detects whether `AGENTS.md`/`CLAUDE.md` are symlinks resolving to a canonical `agent_rules.md`. Drives `skip` vs `blocked` recs on `local/shared-agent-rules`.
+5. Emits recommendations: `skip` / `blocked` / `adapt` actions with rollback notes. Includes a `boundary/generator-jp` blocked rec when the workspace contains `generator-jp/`.
+6. Prints to stdout (markdown by default) or `--output <file>`.
 
 ## What it never does
 
@@ -76,13 +78,32 @@ JSON (`--format json`):
 {
   "version": 1,
   "workspace": "...",
+  "scannedAt": "ISO timestamp",
   "proposedSkillName": "livly-...",
   "description": "...",
   "bodyDraft": "...",
-  "inputs": [...],
-  "candidates": [...],
-  "stacks": [...],
-  "noise": [...]
+  "inputs": [
+    { "path": "...", "hash": "sha256:...", "status": "present|empty|unparseable|symlink-dup" }
+  ],
+  "candidates": [
+    { "id": "...", "evidence": "...", "stack": "ts|unity|go|python|csharp|ruby|apps-script|infra" }
+  ],
+  "stacks": ["..."],
+  "noise": [{ "reason": "..." }],
+  "instructionTopology": [
+    { "path": "agent_rules.md", "kind": "file", "target": "" },
+    { "path": "AGENTS.md", "kind": "symlink", "target": "agent_rules.md" }
+  ],
+  "recommendations": [
+    {
+      "action": "skip|blocked|adapt",
+      "id": "...",
+      "target": "...",
+      "reason": "...",
+      "source": "...",
+      "rollback": "..."
+    }
+  ]
 }
 ```
 

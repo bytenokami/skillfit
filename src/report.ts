@@ -67,11 +67,12 @@ export function renderMarkdown(p: CompositeProposal): string {
   if (p.recommendations.length === 0) {
     lines.push("_No recommendations._");
   } else {
-    lines.push("| action | id | target | source | reason |");
-    lines.push("|--------|----|--------|--------|--------|");
+    lines.push("| action | id | target | source | reason | rollback |");
+    lines.push("|--------|----|--------|--------|--------|----------|");
     for (const r of p.recommendations) {
       const reason = r.reason.replace(/\|/g, "\\|");
-      lines.push(`| \`${r.action}\` | \`${r.id}\` | \`${r.target}\` | ${r.source} | ${reason} |`);
+      const rollback = r.rollback.replace(/\|/g, "\\|");
+      lines.push(`| \`${r.action}\` | \`${r.id}\` | \`${r.target}\` | ${r.source} | ${reason} | ${rollback} |`);
     }
     lines.push("");
     lines.push("Each rec is descriptive only — curator never installs.");

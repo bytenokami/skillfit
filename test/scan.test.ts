@@ -90,10 +90,43 @@ test("recommendations include adapt entries per detected stack", async () => {
   assert.ok(tsAdapt, "ts stack should produce adapt rec");
 });
 
-test("renderMarkdown includes recommendations block", async () => {
+test("renderMarkdown includes recommendations block + rollback column", async () => {
   const p = await runScan(SAMPLE);
   const { renderMarkdown } = await import("../src/report.js");
   const md = renderMarkdown(p);
   assert.ok(md.includes("## Recommendations"));
   assert.ok(md.includes("## Instruction topology"));
+  assert.ok(md.includes("rollback"), "Recommendations table must include rollback column");
+});
+
+test("topology skip rec requires symlinks to resolve to canonical agent_rules.md", async () => {
+  const { mkdtempSync, rmSync, writeFileSync, symlinkSync, mkdirSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const dir = mkdtempSync(path.join(tmpdir(), "skillfit-bad-symlink-"));
+  try {
+    mkdirSync(path.join(dir, "decoy"));
+    writeFileSync(path.join(dir, "agent_rules.md"), "# real rules\n- one\n");
+    writeFileSync(path.join(dir, "decoy", "other.md"), "# decoy\n- two\n");
+    symlinkSync("decoy/other.md", path.join(dir, "AGENTS.md"));
+    symlinkSync("decoy/other.md", path.join(dir, "CLAUDE.md"));
+
+    const p = await runScan(dir);
+    const skipRec = p.recommendations.find((r) => r.id === "local/shared-agent-rules" && r.action === "skip");
+    const blockedRec = p.recommendations.find((r) => r.id === "local/shared-agent-rules" && r.action === "blocked");
+    assert.equal(skipRec, undefined, "must NOT skip when symlinks point to wrong target");
+    assert.ok(blockedRec, "must block when symlinks resolve away from canonical");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("CLI --version reports package.json version (no drift)", async () => {
+  const { execFileSync } = await import("node:child_process");
+  const cliPath = path.resolve(__dirname, "..", "dist", "cli.js");
+  const pkgPath = path.resolve(__dirname, "..", "package.json");
+  const fs = await import("node:fs");
+  if (!fs.existsSync(cliPath)) return;
+  const pkgVersion = (JSON.parse(fs.readFileSync(pkgPath, "utf8")) as { version: string }).version;
+  const out = execFileSync(process.execPath, [cliPath, "--version"], { encoding: "utf8" }).trim();
+  assert.equal(out, pkgVersion, `CLI version (${out}) must match package.json (${pkgVersion})`);
 });

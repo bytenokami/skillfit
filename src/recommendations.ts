@@ -1,4 +1,4 @@
-import { existsSync, lstatSync, readlinkSync } from "node:fs";
+import { existsSync, lstatSync, readlinkSync, realpathSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import path from "node:path";
 import type { CandidateRef } from "./scan.js";
@@ -116,12 +116,14 @@ export function buildRecommendations(args: {
 }): Recommendation[] {
   const recs: Recommendation[] = [];
 
-  const hasShared = args.topology.some((t) => t.path === "agent_rules.md");
+  const sharedEntry = args.topology.find((t) => t.path === "agent_rules.md" && t.kind === "file");
   const agentsLink = args.topology.find((t) => t.path === "AGENTS.md");
   const claudeLink = args.topology.find((t) => t.path === "CLAUDE.md");
-  const unifiedTopology = hasShared
+  const unifiedTopology = !!sharedEntry
     && agentsLink?.kind === "symlink"
-    && claudeLink?.kind === "symlink";
+    && claudeLink?.kind === "symlink"
+    && symlinkResolvesTo(args.repoRoot, "AGENTS.md", "agent_rules.md")
+    && symlinkResolvesTo(args.repoRoot, "CLAUDE.md", "agent_rules.md");
 
   if (unifiedTopology) {
     recs.push({
@@ -168,4 +170,16 @@ export function buildRecommendations(args: {
   }
 
   return recs;
+}
+
+function symlinkResolvesTo(repoRoot: string, symlinkRel: string, canonicalRel: string): boolean {
+  const symPath = path.join(repoRoot, symlinkRel);
+  const canonicalPath = path.join(repoRoot, canonicalRel);
+  try {
+    const symResolved = realpathSync(symPath);
+    const canonicalResolved = realpathSync(canonicalPath);
+    return symResolved === canonicalResolved;
+  } catch {
+    return false;
+  }
 }
