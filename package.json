@@ -1,0 +1,43 @@
+{
+  "name": "skillfit",
+  "version": "0.1.0-rc.1",
+  "description": "Code-grounded overlay on autoskills. Detect actual stack usage, synthesize repo-local rules, ship as Claude skills.",
+  "type": "module",
+  "bin": {
+    "skillfit": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "templates",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json && chmod +x dist/cli.js",
+    "test": "node --test --import tsx test/*.test.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "smoke": "node --import tsx src/cli.ts --help"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "diff": "^7.0.0"
+  },
+  "devDependencies": {
+    "@types/diff": "^7.0.2",
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  },
+  "license": "MIT",
+  "author": "skillfit contributors",
+  "keywords": [
+    "ai",
+    "claude",
+    "skills",
+    "autoskills",
+    "agent",
+    "tooling"
+  ]
+}
