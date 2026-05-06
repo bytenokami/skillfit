@@ -1,27 +1,34 @@
 # skillfit
 
-> Code-grounded overlay on [autoskills](https://github.com/midudev/autoskills). Detect actual stack usage, synthesize repo-local rules, ship as Claude skills with a human-in-loop approval gate.
+> Composite-skill curator for AI agents. **Dry-run only.** Scans a workspace, prints a proposed per-repo composite-skill definition, never installs.
 
 ```bash
-npx skillfit init       # detect, synthesize, write lockfile + .claude/skills
-npx skillfit review     # diff synthesis vs approved; require approval
-npx skillfit check      # CI gate: exit 1 if synthesis drifted
+npx skillfit                              # scan current dir, print to stdout
+npx skillfit --cwd /path/to/repo
+npx skillfit --format json
+npx skillfit --output report.md           # write single report file
 ```
 
-## What it does that autoskills doesn't
+## What it does
 
-| Concern | autoskills | skillfit |
-|---|---|---|
-| Stack detection | `package.json` deps | + AST/import probe (drops zero-use deps) |
-| Repo-local rules | none | synthesizes from `CLAUDE.md` / `AGENTS.md` |
-| Human-in-loop | none | `skillfit review` with diff before emit |
-| CI drift gate | none | `skillfit check` non-zero on drift |
-| Determinism | yes | yes (deterministic synthesis path) |
-| Audited supply chain | yes (registry + SHA-256) | inherits passthrough; own registry phase 2 |
+For one workspace:
 
-## Status
+1. Detects stack(s): TS/JS, Unity, Go, Python, Infra (Jenkins / Docker / Terraform).
+2. Scans rule files: `CLAUDE.md`, `AGENTS.md`, `agent_rules.md`, `.cursor/rules`. Classifies each: `present | empty | unparseable | symlink-dup`.
+3. Distills a thin composite-skill draft scoped per-repo (`livly-<repo>`):
+   - 100–150 token description
+   - ≤1500 token body (identity → rule summary → stack inventory → deep-dive references)
+   - Candidate dep skill ids with evidence
+4. Prints to stdout (markdown by default) or `--output <file>`.
 
-`v0.1.0-rc.1` — release candidate. MVP scope only. See [`docs/ROADMAP.md`](docs/ROADMAP.md) for what's not yet shipped.
+## What it never does
+
+- Never installs skills.
+- Never writes per-dependency skill files.
+- Never edits `CLAUDE.md`, `AGENTS.md`, `.cursor/rules`, hooks, or any agent config.
+- Never creates a lockfile.
+
+The user decides what to do with the report.
 
 ## Install (dev)
 
@@ -33,39 +40,65 @@ npm run build
 npm test
 ```
 
-## Use
+## Output shape
 
-In any TS/JS project:
+Markdown (default):
 
-```bash
-node /path/to/skillfit/dist/cli.js init --cwd .
-node /path/to/skillfit/dist/cli.js review --cwd .
-node /path/to/skillfit/dist/cli.js check --cwd .
+```markdown
+# skillfit scan — /path/to/repo
+
+**Stacks:** unity
+
+## Proposed composite skill
+```yaml
+---
+name: livly-client-uk
+description: Composite proposal for client-uk (unity)…
+type: project
+---
 ```
 
-Outputs:
-- `.claude/skills/*.md` — skill files
-- `skillfit-lock.json` — lockfile with hashes + approval state
+### Body draft
+[≤1500 token thin router with stack inventory + rule summary + dep pointers]
 
-## Trust model
+## Inputs
+| path | status | sha256 |
+|------|--------|--------|
 
-Two origins only:
-- **`verified`** — hash-pinned. Sources: `autoskills` (passthrough hash) or `synthesized` (input-hash + output-hash + explicit approval).
-- **`local`** — user-edited, drift-tracked.
+## Candidate dependency skills
+| id | stack | evidence |
+|----|-------|----------|
+```
 
-Synthesized skills require explicit approval via `skillfit review` before emit. The `approvedHash` in the lockfile blocks future writes until re-approved.
+JSON (`--format json`):
 
-## Why human-in-loop on synthesis
+```json
+{
+  "version": 1,
+  "workspace": "...",
+  "proposedSkillName": "livly-...",
+  "description": "...",
+  "bodyDraft": "...",
+  "inputs": [...],
+  "candidates": [...],
+  "stacks": [...],
+  "noise": [...]
+}
+```
 
-Synthesis takes repo-local rules (`CLAUDE.md`, etc.) and materializes them as a skill the agent will follow. Subtle errors in distillation = subtle errors in agent behavior. Input-hash caching alone makes bad output sticky. The `review` step is load-bearing.
+## Why composite, not per-dep
 
-## Docs
+Per-dep installation = ~150 tokens × N skills loaded into every session-start. For a Unity repo with 19 detected packages that's ~3,000 extra tokens per session before any work happens.
 
-- [`docs/PRD.md`](docs/PRD.md) — product requirements
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — system design
-- [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md) — RC sign-off
-- [`docs/RISK_REGISTER.md`](docs/RISK_REGISTER.md) — known risks + mitigations
-- [`docs/ROADMAP.md`](docs/ROADMAP.md) — phase 2+
+Composite = one ~150-token description visible at session-start; deep per-library guidance loaded only when the agent invokes a specific lib skill.
+
+## Why per-repo, not per-org
+
+Repos with rule files that disagree on conventions (e.g. server-uk's tool-usage rules vs client-uk's) shouldn't share one composite. Per-repo scope prevents false merges.
+
+## Status
+
+`v0.2.0-rc.1` — curator-only release candidate. Not for npm publish until upstream registry contract (autoskills) stabilizes.
 
 ## License
 

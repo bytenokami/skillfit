@@ -1,7 +1,7 @@
 {
   "name": "skillfit",
-  "version": "0.1.0-rc.1",
-  "description": "Code-grounded overlay on autoskills. Detect actual stack usage, synthesize repo-local rules, ship as Claude skills.",
+  "version": "0.2.0-rc.1",
+  "description": "Composite-skill curator (dry-run only). Scans a workspace, prints per-repo composite proposal, never installs.",
   "type": "module",
   "bin": {
     "skillfit": "dist/cli.js"
