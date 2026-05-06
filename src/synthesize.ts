@@ -46,10 +46,26 @@ function deterministicDistill(inputs: SynthesizeInput[]): string {
   if (inputs.length === 0) {
     return "_No source rule files found in this repository._";
   }
-  const sections: string[] = [];
+  const seenHashes = new Map<string, string[]>();
+  const canonicalOrder: SynthesizeInput[] = [];
   for (const input of inputs) {
+    const aliases = seenHashes.get(input.hash);
+    if (aliases) {
+      aliases.push(input.path);
+      continue;
+    }
+    seenHashes.set(input.hash, []);
+    canonicalOrder.push(input);
+  }
+  const sections: string[] = [];
+  for (const input of canonicalOrder) {
     const headings = extractHeadingsAndBullets(input.content);
-    sections.push(`### From \`${input.path}\`\n\n${headings.length ? headings.join("\n") : "_(no headings or bulleted rules detected)_"}`);
+    const aliases = seenHashes.get(input.hash) ?? [];
+    const aliasNote = aliases.length > 0
+      ? `\n\n_Same content also referenced via: ${aliases.map((a) => `\`${a}\``).join(", ")} (symlink-dup)._`
+      : "";
+    const body = headings.length ? headings.join("\n") : "_(no headings or bulleted rules detected)_";
+    sections.push(`### From \`${input.path}\`\n\n${body}${aliasNote}`);
   }
   return sections.join("\n\n");
 }

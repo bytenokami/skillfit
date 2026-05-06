@@ -54,3 +54,20 @@ test("body draft never exceeds ~1500 token cap", async () => {
   const approxTokens = Math.ceil(p.bodyDraft.length / 4);
   assert.ok(approxTokens <= 1600, `body draft is ${approxTokens} tokens (~> 1500 cap)`);
 });
+
+test("body draft does not duplicate symlinked rule content", async () => {
+  const dupFixture = path.resolve(__dirname, "fixtures", "dup-rules");
+  const p = await runScan(dupFixture);
+
+  const ruleLine = "Hard fail over silent fallback";
+  const matches = p.bodyDraft.split(ruleLine).length - 1;
+  assert.equal(matches, 1, `rule line should appear once in body, found ${matches}`);
+
+  const claudeSections = p.bodyDraft.split("### From `CLAUDE.md`").length - 1;
+  assert.equal(claudeSections, 1, `canonical section should appear once`);
+
+  const dupStatuses = p.inputs.filter((i) => i.status === "symlink-dup");
+  assert.equal(dupStatuses.length, 2, "two symlinked inputs should be marked symlink-dup");
+
+  assert.ok(p.bodyDraft.includes("symlink-dup"), "body should note duplicate paths inline");
+});

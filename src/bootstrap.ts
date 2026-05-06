@@ -73,8 +73,8 @@ const UNITY_CSPROJ_HEURISTICS: Record<string, string> = {
 
 const GO_STACK: Record<string, string> = {
   "google.golang.org/grpc": "go-grpc",
-  "go.mongodb.org/mongo-driver": "go-mongo",
-  "github.com/aws/aws-sdk-go": "go-aws-sdk",
+  "go.mongodb.org/mongo-driver": "go-mongodb",
+  "github.com/aws/aws-sdk-go": "go-aws-sdk-v1",
   "github.com/aws/aws-sdk-go-v2": "go-aws-sdk-v2",
   "github.com/labstack/echo": "go-echo",
   "github.com/labstack/echo/v4": "go-echo",
@@ -90,7 +90,7 @@ const GO_STACK: Record<string, string> = {
   "github.com/onsi/ginkgo/v2": "go-ginkgo",
   "google.golang.org/protobuf": "go-protobuf",
   "github.com/golang/protobuf": "go-protobuf",
-  "github.com/aws/aws-lambda-go": "go-lambda",
+  "github.com/aws/aws-lambda-go": "go-aws-lambda",
   "firebase.google.com/go": "go-firebase-admin",
   "firebase.google.com/go/v4": "go-firebase-admin",
   "google.golang.org/api": "go-google-api",
