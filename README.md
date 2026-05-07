@@ -23,7 +23,7 @@ For one workspace:
 
 1. Detects stack(s): TS/JS, Unity, Go, Python, C#, Ruby, Apps Script, Infra (Jenkins / Docker / Terraform).
 2. Scans rule files: `CLAUDE.md`, `AGENTS.md`, `agent_rules.md`, `.cursor/rules`. Classifies each: `present | empty | unparseable | symlink-dup | content-dup`.
-3. Distills a thin composite-skill draft scoped per-repo (`livly-<repo>`):
+3. Distills a thin composite-skill draft scoped per-repo (named `<repo>`, lowercased):
    - 100–150 token description
    - ≤1500 token body (identity → rule summary → stack inventory → deep-dive references)
    - Candidate dep skill ids with evidence
@@ -76,7 +76,7 @@ Markdown (default):
 ## Proposed composite skill
 ```yaml
 ---
-name: livly-client-uk
+name: client-uk
 description: Composite proposal for client-uk (unity)…
 type: project
 ---
@@ -101,7 +101,7 @@ JSON (`--format json`):
   "version": 1,
   "workspace": "...",
   "scannedAt": "ISO timestamp",
-  "proposedSkillName": "livly-...",
+  "proposedSkillName": "...",
   "description": "...",
   "bodyDraft": "...",
   "inputs": [

@@ -1,7 +1,7 @@
 {
   "name": "skillfit",
-  "version": "0.4.0",
-  "description": "Composite-skill curator (dry-run only). Scans a workspace, prints per-repo composite proposal, never installs.",
+  "version": "0.5.0",
+  "description": "Composite-skill curator + opt-in installer for Claude Code and Codex CLI. Scans a workspace, drafts a thin per-repo composite skill, optionally installs it.",
   "type": "module",
   "bin": {
     "skillfit": "dist/cli.js"

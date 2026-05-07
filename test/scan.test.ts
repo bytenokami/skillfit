@@ -11,10 +11,10 @@ const SAMPLE = path.resolve(__dirname, "fixtures", "sample-repo");
 
 test("scan returns a proposal with name, description, body, candidates", async () => {
   const p = await runScan(SAMPLE);
-  assert.equal(p.proposedSkillName, "livly-sample-repo");
+  assert.equal(p.proposedSkillName, "sample-repo");
   assert.ok(p.description.length > 0);
   assert.ok(p.description.length < 1000);
-  assert.ok(p.bodyDraft.includes("# livly-sample-repo"));
+  assert.ok(p.bodyDraft.includes("# sample-repo"));
   assert.ok(p.candidates.length > 0);
   assert.ok(p.stacks.includes("ts"));
 });
@@ -46,7 +46,7 @@ test("renderJson is parseable + has version", async () => {
   const j = renderJson(p);
   const parsed = JSON.parse(j);
   assert.equal(parsed.version, 1);
-  assert.equal(parsed.proposedSkillName, "livly-sample-repo");
+  assert.equal(parsed.proposedSkillName, "sample-repo");
 });
 
 test("body draft never exceeds ~1500 token cap", async () => {

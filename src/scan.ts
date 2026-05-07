@@ -53,7 +53,7 @@ export async function runScan(repoRoot: string): Promise<CompositeProposal> {
     stack: c.stack,
   }));
 
-  const proposedSkillName = `livly-${repoName.toLowerCase()}`;
+  const proposedSkillName = repoName.toLowerCase();
   const description = capString(buildDescription(repoName, boot.stacks, inputs, candidates), MAX_DESCRIPTION_TOKENS);
   const rawBody = buildBodyDraft({
     repoName,
@@ -179,7 +179,7 @@ function buildBodyDraft(args: {
 
   const ruleSection = ruleSummary || "_(no rule files; nothing to summarize)_";
 
-  const body = `# livly-${repoName.toLowerCase()}
+  const body = `# ${repoName.toLowerCase()}
 
 ## Repo identity
 

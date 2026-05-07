@@ -31,7 +31,7 @@ test("install claude writes SKILL.md + sidecar in target dir", async () => {
     assert.ok(existsSync(result.sidecarFile));
 
     const body = readFileSync(result.skillFile, "utf8");
-    assert.ok(body.startsWith("---\nname: livly-sample-repo\n"));
+    assert.ok(body.startsWith("---\nname: sample-repo\n"));
     assert.ok(body.includes("description:"));
     assert.ok(body.includes("metadata:"));
     assert.ok(body.includes("source: skillfit"));
@@ -53,7 +53,7 @@ test("install codex writes SKILL.md + sidecar (same shape, different default roo
     assert.equal(result.status, "installed");
     assert.equal(result.target, "codex");
     assert.ok(existsSync(result.skillFile));
-    assert.ok(result.skillFile.endsWith(path.join("livly-sample-repo", "SKILL.md")));
+    assert.ok(result.skillFile.endsWith(path.join("sample-repo", "SKILL.md")));
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -126,7 +126,7 @@ test("buildSkillBody YAML frontmatter is well-formed (parseable name + descripti
   const lines = fm![1]!.split("\n");
   const name = lines.find((l) => l.startsWith("name:"));
   assert.ok(name);
-  assert.ok(name.includes("livly-sample-repo"));
+  assert.ok(name.includes("sample-repo"));
   const desc = lines.find((l) => l.startsWith("description:"));
   assert.ok(desc);
 });
@@ -138,7 +138,7 @@ test("sidecar contains version, hash, name, workspace", async () => {
     const result = await installClaude({ proposal, workspace: SAMPLE, scope: "project", force: false, installerVersion: "0.4.0-test", rootOverride: root });
     const sidecar = JSON.parse(readFileSync(result.sidecarFile, "utf8"));
     assert.equal(sidecar.version, 1);
-    assert.equal(sidecar.skillName, "livly-sample-repo");
+    assert.equal(sidecar.skillName, "sample-repo");
     assert.ok(sidecar.proposalHash.startsWith("sha256:"));
     assert.ok(sidecar.installedBy.startsWith("skillfit@"));
     assert.equal(typeof sidecar.installedAt, "string");
